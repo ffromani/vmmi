@@ -33,7 +33,7 @@ Description of mandatary fields:
 - "timestamp" (uint): UNIX timestamp (seconds since UNIX EPOCH aka 1970/01/01 00:00:00.00)
 
 Example minimal (empty) JSON message:
-
+```
   {
     "vmmiVersion": "0.1.0",
     "timestamp": 1528116575
@@ -42,7 +42,7 @@ Example minimal (empty) JSON message:
       ...
     }
   }
-
+```
 
 ## VMMI Plugin
 
@@ -136,7 +136,7 @@ The common configuration file defines the following keys:
   Default is 0
 
 Example configuration file
-
+```
   {
     "vmmiVersion": "0.1.0",
     "contentType": "configuration",
@@ -146,7 +146,7 @@ Example configuration file
       "progressReportRate": "30s"
     }
   }
-
+```
 
 #### Plugin-specific configuration file
 
@@ -181,7 +181,7 @@ If a VMMI plugin sends a migration status message, this message must be the last
 
 Example messages:
 
-
+```
   {
     "vmmiVersion": "0.1.0",
     "timestamp": 1528117283,
@@ -191,8 +191,8 @@ Example messages:
       "iteration": 2,
     }
   }
-
-
+```
+```
   {
     "vmmiVersion": "0.1.0",
     "timestamp": 1528117312,
@@ -201,7 +201,7 @@ Example messages:
       "downtime": "10ms"
     }
   }
-
+```
 
 
 Example valid message sequences:
@@ -226,7 +226,7 @@ Example valid message sequences:
 
 
 Example messages:
-
+```
   {
     "vmmiVersion": "0.1.0",
     "timestamp": 1528117329,
@@ -237,3 +237,4 @@ Example messages:
       "details": "generic error explained in a user-friendly way"
     }
   }
+```
