@@ -33,14 +33,11 @@ Each JSON message must have at least those keys:
 - "contentType" (string): describes the content of the message, e.g the not-specified, message-variable fields.
   The value of the key is not specified. Some values, however, are reserved for well-known messages. The reserved fields are
   - "configuration": for plugin configuration
-  - "migrationprogress": for migration progress updates
-  - "migrationcomplete": for migration completion report, either succesfull or not
   - "error": for error message(s).
 
 Each message except the ones with "contentType": "configuration" must have one additional mandatory field
 
 - "timestamp" (uint): seconds since UNIX EPOCH (1970/01/01 00:00:00.00) - aka UNIX time
-
 
 ## VMMI Plugin
 
@@ -127,14 +124,6 @@ The common configuration file defines the following keys:
 
 - "verbose" (int): sets the plugin verbosiness. A plugin sends output using stdout and stderr (see below). The following values are defined:
   * 0: the plugin is completely silent except for fatal error messages
-  * 1: in addition to level 0, the plugin also reports the result of the migration
-  * 10: in addition to level 1, the plugin also sends progress reports when progress data is available from libvirt
-  Default is 1
-
-- "progressReportRate" (string): specifies a time interval to report progress.
-  * if set to zero, report progress when data is available from libvirt, if the `verbose` flag allows so
-  * if set to any time, sends progress report each _time_ interval, even if not changed since last update.
-  Default is 0
 
 Example configuration file
 ```
@@ -144,7 +133,6 @@ Example configuration file
     "configuration": {
       "connection": "qemu:///system",
       "verbose": 10,
-      "progressReportRate": "30s"
     }
   }
 ```
@@ -167,64 +155,14 @@ A VMMI compliant plugin may use both standard output (stdout) and standard error
 It must not assume any other communication channel.
 A VMMI compliant plugin may log other data to other channels (private log file, system log) using any other means, but it must not assume
 the client application access those messages.
-A VMMI compliant plugin must not assume stdout and stderr are separate channel. A client application is free to multiplex them both
-in another channel (e.g. a socket, a pipe)
+A VMMI compliant plugin must not assume stdout and stderr are separate channels. A client application is free to multiplex them both
+in another channel (e.g. a socket, a pipe) before to launch a VMMI plugin.
 A VMMI compliant plugin must enforce the sequence of the messages and should not assume any implicit ordering provided by the channel.
 In other words, a VMMI compliant plugin must ensure the messages it emits are ordered from the source.
 
-A VMMI compliant plugin may send progress report messages if its configuration allows so.
-If a VMMI plugin sends progress report it must send at least two messages signaling zero progress and complete progress.
-
-A VMMI compliant plugin may send a migration completion message. A migration completion explicitely signal the end of migration.
-Please note that this is a different message with respect to `complete progress` message.
-If a VMMI plugin sends a migration status message, this message must be sent after `progress complete` message.
-If a VMMI plugin sends a migration status message, this message must be the last message sent to stdout.
-
-Example messages:
-
-```
-  {
-    "vmmiVersion": "0.1.0",
-    "timestamp": 1528117283,
-    "contentType": "migrationProgress",
-    "migrationProgress": {
-      "percentage": "48",
-      "iteration": 2,
-    }
-  }
-```
-```
-  {
-    "vmmiVersion": "0.1.0",
-    "timestamp": 1528117312,
-    "contentType": "migrationComplete",
-    "migrationComplete": {
-      "downtime": "10ms"
-    }
-  }
-```
-
-
-Example valid message sequences:
-
-  1. migration status
-
-
-  1. migration progress: 0%
-  2. migration progress: 100%
-  3. migration status
-
-
-  1. migration progress: 0%
-  2. migration progress: 25%
-  3. migration progress: 50%
-  4. migration progress: 75%
-  5. migration progress: 100%
-  6. migration status
-  
+TBD: joining logs
 
 ### Reporting errors
-
 
 Example messages:
 ```
