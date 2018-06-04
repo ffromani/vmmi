@@ -23,26 +23,24 @@ The key words "must", "must not", "required", "shall", "shall not", "should", "s
 - the management application must set up anything the VM requires to run (e.g. shared storage) before to engage the VMMI plugins
 - the management application is in charge to clean up the resources required by the VM to run
 - the usage of a VMMI plugin replaces any call to the [virDomainMigrateToURI API family](https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainMigrateToURI3)
-- any exchange of data between a VMMI plugin and the outside system must happen through JSON messages. Each JSON message must have at least those fields: "vmmiVersion", "contentType", "timestamp".
-  Please note that a configuration file is meant to be a JSON message.
 
-Description of mandatary fields:
+### Messages: exchanging data with the client application
+
+Any exchange of data between a VMMI plugin and the client application must happen through JSON messages.
+Each JSON message must have at least those keys:
 
 - "vmmiVersion" (string): version of the VMMI SPEC this message complies to. Current value must be "0.1.0"
 - "contentType" (string): describes the content of the message, e.g the not-specified, message-variable fields.
-- "timestamp" (uint): UNIX timestamp (seconds since UNIX EPOCH aka 1970/01/01 00:00:00.00)
+  The value of the key is not specified. Some values, however, are reserved for well-known messages. The reserved fields are
+  - "configuration": for plugin configuration
+  - "migrationprogress": for migration progress updates
+  - "migrationcomplete": for migration completion report, either succesfull or not
+  - "error": for error message(s).
 
-Example minimal (empty) JSON message:
-```
-  {
-    "vmmiVersion": "0.1.0",
-    "timestamp": 1528116575
-    "contentType": "configuration"
-    "configuration": {
-      ...
-    }
-  }
-```
+Each message except the ones with "contentType": "configuration" must have one additional mandatory field
+
+- "timestamp" (uint): seconds since UNIX EPOCH (1970/01/01 00:00:00.00) - aka UNIX time
+
 
 ## VMMI Plugin
 
@@ -55,9 +53,12 @@ The only reserved name is `migrate`, which must not be used and it is reserved t
 
 ### Lifecycle
 
-A VMMI plugin is an operating system process which starts when the migration begins, and exits when "termination" conditions are met (see below).
-A VMMI compliant plugin must never exceed the lifetime of a migration, except for the necessary termination and cleanup duties.
-A VMMI plugin is executed when the migration starts, but it must not perform any change to the system, including actually starting the migration using the libvirt APIs, until it got the configuration data (see Configuration)
+A VMMI plugin is an operating system process which starts when the migration begins, and exits when "termination"
+conditions are met (see "Termination" section).
+A VMMI compliant plugin must never exceed the lifetime of a migration, except for the necessary termination
+and cleanup duties.
+A VMMI plugin is executed when the migration starts, but it must not perform any change to the system,
+including actually starting the migration using the libvirt APIs, until it got the configuration data (see Configuration)
 
 ### Termination
 
