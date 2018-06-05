@@ -40,6 +40,34 @@ Each message except the ones with "contentType": "configuration" must have one a
 
 - "timestamp" (uint): seconds since UNIX EPOCH (1970/01/01 00:00:00.00) - aka UNIX time
 
+Each message must have either three or four toplevel keys
+
+- any message with "contenType" not "configuration" must have four keys:
+  - vmmiVersion
+  - contentType
+  - timestamp
+  - <content>
+
+where "<content>" is the value of the "contentType" key. Example
+```
+  {
+    "vmmiVersion": "0.1.0",
+    "timestamp": 1528117452,
+    "contentType": "foobar",
+    "foobar": {
+      "fizz": 42,
+      "buzz": "baz"
+    }
+  }
+```
+
+- "configuration" messages must have three keys:
+  - vmmiVersion
+  - contentType
+  - configuration
+
+Please note that also in this case the last well known key besides "vmmiVersion" and "contentType" is actually the value of the "contentType" key.
+
 ## VMMI Plugin
 
 ### Overview
@@ -102,29 +130,28 @@ A VMMI compliant plugin must support the following parameters:
 
 The path may be a simple hyphen ('-'), which signals the plugin to read the configuration from standard input. The plugin must not perform any change to the system,
 including outputting any data to stdout or stderr, until it got either the configuration or error.
-If no path or no hyphen is specified, the plugin must either use its defaults and attempt to read the default configuration file: `/etc/vmmi/conf.d/<plugin>.conf`.
-A VMMI compliant plugin must abort with error if the configuration file is given, but the data is malformed or partial.
+If no path or no hyphen is specified, the plugin must either use its defaults and attempt to read the default configuration file: `/etc/vmmi/conf.d/<plugin>.json`.
+A VMMI compliant plugin must abort with error if the configuration file is given, and the data is malformed or partial.
 A VMMI compliant plugin must abort if it attempts to read the default configuration file and fails because the data is malformed or partial.
 
 ### Configuration
 
-Each plugin has *two* configuration files.
-The first configuration file is `/etc/vmmi/migrate.conf`. It holds the parameters *each* plugin must support.
-The second configuration file is either given as plugin parameter, or the default file 
-
-A VMMI compliant plugin must not abort if no configuration file is available, including the default files `/etc/vmmi/conf.d/<plugin>.conf`. The given path always overrides the default.
-A VMMI compliant plugin must process either file, and shall not, under any circumstance, process both files.
-A VMMI compliant plugin must update its configuration file using this resolution order: defaults, common configuration file, specified configuration. The most recent data must always overwrite the old
-A VMMI compliant plugin which reads its configuration from standard input should not expect the standard input to be closed after it received the configuration data. However, it must ignore any additional data which
+A VMMI compliant plugin must not abort if no configuration file is available, including the default
+file `/etc/vmmi/conf.d/<plugin>.json`. The given path always overrides the default.
+A VMMI compliant plugin must update its configuration file using this resolution order:
+defaults, specified configuration. The most recent data must always overwrite the old
+A VMMI compliant plugin which reads its configuration from standard input should not expect the standard input
+to be closed after it received the configuration data. However, it must ignore any additional data which
 may be sent through the standard input
 
-#### Common configuration file
+#### Configuration file content
 
-The common configuration file defines the following keys:
+The configuration of each plugin must support at least the following keys:
 
 - "connection" (string): specifies how to connect to libvirt. Default is "qemu:///system"
 
-- "verbose" (int): sets the plugin verbosiness. A plugin sends output using stdout and stderr (see below). The following values are defined:
+- "verbose" (int): sets the plugin verbosiness. A plugin sends output using stdout and stderr (see below).
+  The following values are defined:
   * 0: the plugin is completely silent except for fatal error messages
 
 Example configuration file
@@ -139,9 +166,7 @@ Example configuration file
   }
 ```
 
-#### Plugin-specific configuration file
-
-TBD
+A VMMI compliant plugin is expected to honour the above keys. It cannot read and silently discard them.
 
 ### Plugin runtime data
 
