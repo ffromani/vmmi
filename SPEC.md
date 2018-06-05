@@ -9,7 +9,8 @@ This document proposes a generic plugin-based migration policy solution for virt
 In this document we always use the term 'migration' as shortcut for 'live migration' - the process of migrating a VM while the guest is running, with minimal or no disruption
 to the Guest workload, and without the guest noticing.
 
-Migrating a VM is not a simple task, with many tradeoffs and knobs to consider. Each different management applications implements their own logic and policies to adapt to use cases.
+Migrating a VM is not a simple task, with many tradeoffs to consider and knobs to tune to make the operation succeed.
+Each different management applications implements their own logic and policies to adapt to use cases.
 This solutions aims to provide
 1. a common interface to make the migration policies pluggable.
 2. a mean to make the migration policies thus interchangeable across management applications.
@@ -72,7 +73,7 @@ it must do everything possible to properly clean up, freeing resources and leavi
 The introduction of VMMI plugins adds another entity between libvirt and the management application.
 If libvirt crashes, or if the VMMI plugin loses the connection to libvirt for any reason, it must exit with error.
 If the VM under migration disappears for any reason outside the control of a VMMI plugin, the VMMI plugin must exit with error.
-Please note that a VMMI plugin must expect and handle only those teo termination conditions: migration completed, migration aborted.
+Please note that a VMMI plugin must expect and handle only those termination conditions: migration completed, migration aborted.
 Please note that the management application is free to abort the migraton (virDomainAbortJob) anytime outside the control of the VMMI plugin.
 A VMMI compliant plugin must treat the "migration aborted by the management application" state like the "migration aborted by the hypervisor"
 state and exit as soon as possible.
@@ -81,7 +82,7 @@ If the management application crashes, or terminates while the VMMI plugin is st
 
 ### Signal handling
 
-A VMMI compliant plugin must react to the following signal
+A VMMI compliant plugin must react to the following signals
 
 
 - SIGKILL: exit early as possible, must NOT attempt to cleanup, must NOT abort the current migration
@@ -99,7 +100,8 @@ A VMMI compliant plugin must support the following parameters:
 - the path to the configuration file (optional).
 
 
-The path may be a simple hyphen ('-'), which signals the plugin to read the configuration from standard input. The plugin must not perform any change to the system, including outputting any data to stdout or stderr, until it got either the configuration or error.
+The path may be a simple hyphen ('-'), which signals the plugin to read the configuration from standard input. The plugin must not perform any change to the system,
+including outputting any data to stdout or stderr, until it got either the configuration or error.
 If no path or no hyphen is specified, the plugin must either use its defaults and attempt to read the default configuration file: `/etc/vmmi/conf.d/<plugin>.conf`.
 A VMMI compliant plugin must abort with error if the configuration file is given, but the data is malformed or partial.
 A VMMI compliant plugin must abort if it attempts to read the default configuration file and fails because the data is malformed or partial.
@@ -149,7 +151,15 @@ TBD
 
 Currently not supported. A compliant plugin should expect not to receive input from any source other than the configuration data.
 
-### Reporting output
+### Plugin output
+
+VMMI plugins are expected to be quiet with respect to their client application.
+A VMMI compliant plugin is expected to send only error messages to the client application.
+A VMMI compliant plugin should use a private log file to log status or debug information.
+A VMMI compliant plugin may send status and debug information to its client application, but the format of the messages used to
+report this information is intentionally unspecified.
+
+#### Sending messages to the client application
 
 A VMMI compliant plugin may use both standard output (stdout) and standard error (stderr) to communicate with the client application.
 It must not assume any other communication channel.
@@ -160,11 +170,9 @@ in another channel (e.g. a socket, a pipe) before to launch a VMMI plugin.
 A VMMI compliant plugin must enforce the sequence of the messages and should not assume any implicit ordering provided by the channel.
 In other words, a VMMI compliant plugin must ensure the messages it emits are ordered from the source.
 
-TBD: joining logs
+#### The Error messages
 
-### Reporting errors
-
-Example messages:
+Example message:
 ```
   {
     "vmmiVersion": "0.1.0",
