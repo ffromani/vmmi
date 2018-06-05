@@ -6,6 +6,8 @@ import (
 	"github.com/fromanirh/vmmi/pkg/vmmierrors"
 	"github.com/fromanirh/vmmi/pkg/vmmitypes"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -36,8 +38,28 @@ func main() {
 		vmmierrors.Abort(pc, vmmierrors.ErrorCodeMalformedParameters, details)
 	}
 
-	time.Sleep(delay)
+	errCode := vmmierrors.ErrorCodeMigrationFailed
 
-	details = fmt.Sprintf("cannot migrate VM %s to %s using %s (took %v)", pc.Params.VMid, pc.Params.DestinationURI, conf.Configuration.Connection, conf.Configuration.Delay)
-	vmmierrors.Abort(pc, vmmierrors.ErrorCodeMigrationFailed, details)
+	t := time.NewTimer(delay)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
+
+	start := time.Now()
+	select {
+	case s := <-sigs:
+		switch s {
+		case syscall.SIGINT, syscall.SIGSTOP:
+			errCode = vmmierrors.ErrorCodeMigrationAborted
+		case syscall.SIGTERM:
+			errCode = vmmierrors.ErrorCodeNone
+		default:
+			errCode = vmmierrors.ErrorCodeUnknown
+		}
+	case <- t.C:
+		// do nothing
+	}
+	stop := time.Now()
+
+	details = fmt.Sprintf("cannot migrate VM %s to %s using %s (took %v)", pc.Params.VMid, pc.Params.DestinationURI, conf.Configuration.Connection, stop.Sub(start))
+	vmmierrors.Abort(pc, errCode, details)
 }

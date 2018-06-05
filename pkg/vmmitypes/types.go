@@ -23,3 +23,8 @@ type Parameters struct {
 	PluginConfigurationPath string
 }
 
+type PluginContext struct {
+	Params Parameters
+	Out    io.Writer
+	Config interface{}
+}

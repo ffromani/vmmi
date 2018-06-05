@@ -10,6 +10,7 @@ import (
 
 const (
 	ErrorCodeNone = iota
+	ErrorCodeUnknown
 	ErrorCodeMalformedParameters
 	ErrorCodeMissingParameters
 	ErrorCodeMigrationFailed
@@ -33,6 +34,8 @@ func Strerror(code int) string {
 	switch code {
 	case ErrorCodeNone:
 		return "none"
+	case ErrorCodeUnknown:
+		return "unexpected error"
 	case ErrorCodeMalformedParameters:
 		return "malformed parameters"
 	case ErrorCodeMissingParameters:

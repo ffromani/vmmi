@@ -113,9 +113,9 @@ If the management application crashes, or terminates while the VMMI plugin is st
 A VMMI compliant plugin must react to the following signals
 
 
-- SIGKILL: exit early as possible, must NOT attempt to cleanup, must NOT abort the current migration
 - SIGTERM: exit early as possible, but MUST free any resources and clean up the system, must NOT abort the current migration
 - SIGSTOP: abort the current migration, perform any other operation like SIGTERM was received.
+- SIGINT: like SIGSTOP
 
 
 ### Parameters
