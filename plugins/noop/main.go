@@ -31,7 +31,8 @@ func main() {
 	delay, err := time.ParseDuration(conf.Configuration.Delay)
 	if err != nil {
 		details = fmt.Sprintf("bad delay specification: %s", conf.Configuration.Delay)
-		pc.Abort(vmmi.ErrorCodeMalformedParameters, details)
+		pc.Report(vmmi.ErrorCodeMalformedParameters, details)
+		os.Exit(1)
 	}
 
 	errCode := vmmi.ErrorCodeMigrationFailed
@@ -48,14 +49,13 @@ func main() {
 			errCode = vmmi.ErrorCodeMigrationAborted
 		case syscall.SIGTERM:
 			errCode = vmmi.ErrorCodeNone
-		default:
-			errCode = vmmi.ErrorCodeUnknown
 		}
 	case <-t.C:
 		// do nothing
 	}
 	stop := time.Now()
 
-	details = fmt.Sprintf("cannot migrate VM %s to %s using %s (took %v)", pc.Params.VMid, pc.Params.DestinationURI, conf.Configuration.Connection, stop.Sub(start))
-	pc.Abort(errCode, details)
+	details = fmt.Sprintf("cannot migrate VM %s to %s using %s (took %v)", pc.Params.VMid, pc.Params.DestinationURI, conf.Configuration.ConnectionURI, stop.Sub(start))
+	pc.Report(errCode, details)
+	os.Exit(1)
 }

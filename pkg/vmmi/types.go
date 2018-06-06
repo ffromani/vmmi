@@ -8,13 +8,13 @@ const MessageConfiguration string = "configuration"
 const MessageError string = "error"
 
 type Header struct {
-	Version string `json:"vmmiVersion"`
+	Version     string `json:"vmmiVersion"`
 	ContentType string `json:"contentType"`
 }
 
 type Options struct {
-	Connection string `json:"connection"`
-	Verbose    int    `json:"verbose"`
+	ConnectionURI string `json:"connection"`
+	Verbose       int    `json:"verbose"`
 }
 
 type Parameters struct {

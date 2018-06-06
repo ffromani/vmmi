@@ -20,7 +20,8 @@ func FindPluginConfigurationPath(args []string) string {
 func (pc *PluginContext) ParseParameters(args []string) {
 	if len(args) < 3 {
 		details := fmt.Sprintf("expected %d arguments, received %d", 2, len(args)-1)
-		pc.Abort(ErrorCodeMissingParameters, details)
+		pc.Report(ErrorCodeMissingParameters, details)
+		os.Exit(1)
 	}
 
 	pc.Params.VMid = args[1]
@@ -32,7 +33,6 @@ func (pc *PluginContext) ParseParameters(args []string) {
 }
 
 func (pc *PluginContext) ParseConfiguration() {
-	var details string
 	var err error
 	var r io.Reader
 	if pc.Params.PluginConfigurationPath == "-" {
@@ -40,8 +40,8 @@ func (pc *PluginContext) ParseConfiguration() {
 	} else {
 		src, err := os.Open(pc.Params.PluginConfigurationPath)
 		if err != nil {
-			details = fmt.Sprintf("%s", err)
-			pc.Abort(ErrorCodeMalformedParameters, details)
+			pc.ReportError(ErrorCodeMalformedParameters, err)
+			os.Exit(1)
 		}
 		defer src.Close()
 		r = src
@@ -49,8 +49,8 @@ func (pc *PluginContext) ParseConfiguration() {
 	dec := json.NewDecoder(r)
 	err = dec.Decode(pc.Config)
 	if err != nil {
-		details = fmt.Sprintf("%s", err)
-		pc.Abort(ErrorCodeMalformedParameters, details)
+		pc.ReportError(ErrorCodeMalformedParameters, err)
+		os.Exit(1)
 	}
 }
 

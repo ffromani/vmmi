@@ -2,19 +2,22 @@ package vmmi
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
-	"os"
 	"time"
 )
 
 const (
 	ErrorCodeNone = iota
 	ErrorCodeUnknown
+	ErrorCodeOperationFailed
 	ErrorCodeMalformedParameters
 	ErrorCodeMissingParameters
 	ErrorCodeMigrationFailed
 	ErrorCodeMigrationAborted
+	ErrorCodeVMUnknown
 	ErrorCodeVMDisappeared
+	ErrorCodeLibvirtDisconnected
 )
 
 type ErrorData struct {
@@ -32,9 +35,11 @@ type ErrorMessage struct {
 func Strerror(code int) string {
 	switch code {
 	case ErrorCodeNone:
-		return "none"
+		return ""
 	case ErrorCodeUnknown:
 		return "unexpected error"
+	case ErrorCodeOperationFailed:
+		return "operation failed"
 	case ErrorCodeMalformedParameters:
 		return "malformed parameters"
 	case ErrorCodeMissingParameters:
@@ -43,8 +48,12 @@ func Strerror(code int) string {
 		return "libvirt migration failed"
 	case ErrorCodeMigrationAborted:
 		return "migration aborted"
+	case ErrorCodeVMUnknown:
+		return "VM unknown"
 	case ErrorCodeVMDisappeared:
 		return "VM disappeared"
+	case ErrorCodeLibvirtDisconnected:
+		return "Lost connection to libvirt"
 	}
 	return "unknown"
 }
@@ -67,7 +76,12 @@ func Report(w io.Writer, code int, details string) {
 	enc.Encode(msg)
 }
 
-func (pc *PluginContext) Abort(code int, details string) {
+func (pc *PluginContext) Report(code int, details string) {
 	Report(pc.Out, code, details)
-	os.Exit(1)
+}
+
+
+func (pc *PluginContext) ReportError(code int, err error) {
+	details := fmt.Sprintf("%s", err)
+	pc.Report(code, details)
 }
