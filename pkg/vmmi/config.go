@@ -1,10 +1,8 @@
-package vmmiconfig
+package vmmi
 
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/fromanirh/vmmi/pkg/vmmierrors"
-	"github.com/fromanirh/vmmi/pkg/vmmitypes"
 	"io"
 	"os"
 	"path"
@@ -19,10 +17,10 @@ func FindPluginConfigurationPath(args []string) string {
 	return path.Join(BaseConfigurationDir, pluginName)
 }
 
-func ParseParameters(pc *vmmitypes.PluginContext, args []string) {
+func (pc *PluginContext) ParseParameters(args []string) {
 	if len(args) < 3 {
 		details := fmt.Sprintf("expected %d arguments, received %d", 2, len(args)-1)
-		vmmierrors.Abort(pc, vmmierrors.ErrorCodeMissingParameters, details)
+		pc.Abort(ErrorCodeMissingParameters, details)
 	}
 
 	pc.Params.VMid = args[1]
@@ -33,7 +31,7 @@ func ParseParameters(pc *vmmitypes.PluginContext, args []string) {
 	}
 }
 
-func ParseConfiguration(pc *vmmitypes.PluginContext) {
+func (pc *PluginContext) ParseConfiguration() {
 	var details string
 	var err error
 	var r io.Reader
@@ -43,7 +41,7 @@ func ParseConfiguration(pc *vmmitypes.PluginContext) {
 		src, err := os.Open(pc.Params.PluginConfigurationPath)
 		if err != nil {
 			details = fmt.Sprintf("%s", err)
-			vmmierrors.Abort(pc, vmmierrors.ErrorCodeMalformedParameters, details)
+			pc.Abort(ErrorCodeMalformedParameters, details)
 		}
 		defer src.Close()
 		r = src
@@ -52,11 +50,11 @@ func ParseConfiguration(pc *vmmitypes.PluginContext) {
 	err = dec.Decode(pc.Config)
 	if err != nil {
 		details = fmt.Sprintf("%s", err)
-		vmmierrors.Abort(pc, vmmierrors.ErrorCodeMalformedParameters, details)
+		pc.Abort(ErrorCodeMalformedParameters, details)
 	}
 }
 
-func Parse(pc *vmmitypes.PluginContext, args []string) {
-	ParseParameters(pc, args)
-	ParseConfiguration(pc)
+func (pc *PluginContext) Parse(args []string) {
+	pc.ParseParameters(args)
+	pc.ParseConfiguration()
 }

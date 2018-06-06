@@ -1,8 +1,7 @@
-package vmmierrors
+package vmmi
 
 import (
 	"encoding/json"
-	"github.com/fromanirh/vmmi/pkg/vmmitypes"
 	"io"
 	"os"
 	"time"
@@ -25,7 +24,7 @@ type ErrorData struct {
 }
 
 type ErrorMessage struct {
-	vmmitypes.Header
+	Header
 	Timestamp int64      `json:"timestamp"`
 	Error     *ErrorData `json:"error"`
 }
@@ -52,9 +51,9 @@ func Strerror(code int) string {
 
 func Report(w io.Writer, code int, details string) {
 	msg := ErrorMessage{
-		Header: vmmitypes.Header{
-			VmmiVersion: vmmitypes.VmmiVersion,
-			ContentType: vmmitypes.MessageError,
+		Header: Header{
+			Version: Version,
+			ContentType: MessageError,
 		},
 		Timestamp: time.Now().Unix(),
 		Error: &ErrorData{
@@ -68,7 +67,7 @@ func Report(w io.Writer, code int, details string) {
 	enc.Encode(msg)
 }
 
-func Abort(pc *vmmitypes.PluginContext, code int, details string) {
+func (pc *PluginContext) Abort(code int, details string) {
 	Report(pc.Out, code, details)
 	os.Exit(1)
 }

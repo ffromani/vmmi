@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/fromanirh/vmmi/pkg/vmmiconfig"
-	"github.com/fromanirh/vmmi/pkg/vmmierrors"
-	"github.com/fromanirh/vmmi/pkg/vmmitypes"
+	"github.com/fromanirh/vmmi/pkg/vmmi"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,12 +10,12 @@ import (
 )
 
 type Options struct {
-	vmmitypes.Options
+	vmmi.Options
 	Delay string `json:"delay"`
 }
 
 type PluginConfiguration struct {
-	vmmitypes.Header
+	vmmi.Header
 	Configuration Options `json:"configuration"`
 }
 
@@ -26,19 +24,19 @@ type PluginConfiguration struct {
 func main() {
 	var details string
 	conf := PluginConfiguration{}
-	pc := &vmmitypes.PluginContext{
+	pc := &vmmi.PluginContext{
 		Config: &conf,
 		Out:    os.Stdout,
 	}
-	vmmiconfig.Parse(pc, os.Args)
+	pc.Parse(os.Args)
 
 	delay, err := time.ParseDuration(conf.Configuration.Delay)
 	if err != nil {
 		details = fmt.Sprintf("bad delay specification: %s", conf.Configuration.Delay)
-		vmmierrors.Abort(pc, vmmierrors.ErrorCodeMalformedParameters, details)
+		pc.Abort(vmmi.ErrorCodeMalformedParameters, details)
 	}
 
-	errCode := vmmierrors.ErrorCodeMigrationFailed
+	errCode := vmmi.ErrorCodeMigrationFailed
 
 	t := time.NewTimer(delay)
 	sigs := make(chan os.Signal, 1)
@@ -49,11 +47,11 @@ func main() {
 	case s := <-sigs:
 		switch s {
 		case syscall.SIGINT, syscall.SIGSTOP:
-			errCode = vmmierrors.ErrorCodeMigrationAborted
+			errCode = vmmi.ErrorCodeMigrationAborted
 		case syscall.SIGTERM:
-			errCode = vmmierrors.ErrorCodeNone
+			errCode = vmmi.ErrorCodeNone
 		default:
-			errCode = vmmierrors.ErrorCodeUnknown
+			errCode = vmmi.ErrorCodeUnknown
 		}
 	case <- t.C:
 		// do nothing
@@ -61,5 +59,5 @@ func main() {
 	stop := time.Now()
 
 	details = fmt.Sprintf("cannot migrate VM %s to %s using %s (took %v)", pc.Params.VMid, pc.Params.DestinationURI, conf.Configuration.Connection, stop.Sub(start))
-	vmmierrors.Abort(pc, errCode, details)
+	pc.Abort(errCode, details)
 }

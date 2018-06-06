@@ -1,14 +1,14 @@
-package vmmitypes
+package vmmi
 
 import "io"
 
-const VmmiVersion string = "0.1.0"
+const Version string = "0.1.0"
 
 const MessageConfiguration string = "configuration"
 const MessageError string = "error"
 
 type Header struct {
-	VmmiVersion string `json:"vmmiVersion"`
+	Version string `json:"vmmiVersion"`
 	ContentType string `json:"contentType"`
 }
 
