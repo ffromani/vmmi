@@ -197,7 +197,24 @@ In other words, a VMMI compliant plugin must ensure the messages it emits are or
 
 #### The Error messages
 
-Example message:
+A VMMI compliant plugin must always report its termination -except for crashes sending an Error message to its client.
+Should the migration succeed, a VMMI compliant plugin must signal this state sending an Error message with "code": 0 (no error) and empty message.
+
+Example of succesful termination
+```
+  {
+    "vmmiVersion": "0.1.0",
+    "timestamp": 1528117329,
+    "contentType": "error",
+    "error": {
+      "code": 0,
+      "message": "",
+      "details": "migration completed in 42.1s"
+    }
+  }
+```
+
+Example of failed migration report message:
 ```
   {
     "vmmiVersion": "0.1.0",
