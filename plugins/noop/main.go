@@ -19,8 +19,6 @@ type PluginConfiguration struct {
 	Configuration Options `json:"configuration"`
 }
 
-// TODO: handle signals
-
 func main() {
 	var details string
 	conf := PluginConfiguration{}
@@ -53,7 +51,7 @@ func main() {
 		default:
 			errCode = vmmi.ErrorCodeUnknown
 		}
-	case <- t.C:
+	case <-t.C:
 		// do nothing
 	}
 	stop := time.Now()
