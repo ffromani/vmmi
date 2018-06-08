@@ -12,21 +12,28 @@ Libvirt - the common infrastructure - should not implement policies. It should, 
 To reduce duplication and improve interoperability, the only option left is isolate the migration policies in a third entity and add it to the picture: the VMMI plugins.
 Any management application using VMMI has still the option to have built-in policies. Using VMMI is about adding extensibility and flexibility.
 
+## Language-agnostic
+
+*VMMI is language agnostic, and uses well-known, largely available tools to integrate with the existing stack*
+
+The VMMI specs involve calling external processes using the standard linux tools, and exchanging JSON messages, which is a widely available and simple format.
+Using external processes to implement plugins poses no constraint to the implementation language.
+
 ## Integration in libraries
 
-*VMMI does not currently require any change to libvirt*
+*VMMI requires minor changes to libvirt and to management applications*
 
 Adding new migration policies should be as simple as possible. Having a library with built-ins policies conflicts with this requirement.
 The only real option is to have a runtime, pluggable interface.
-There is no immediate benefit for integrating that aforementioned interface in libvirt. In the future, libvirt may offer a facade to invoke VMMI plugins using the domain API, much like
-we do with current migration APIs, but the benefit is minor.
+In the future, libvirt may offer a facade to invoke VMMI plugins using the domain API, much like we do with current migration APIs. This change is minor and not invasive.
+The change required to management application is very simple: just call a different, but similar, API (be it integrated in libvirt or in an ancillary library).
 
 ## Shared objects vs processes
 
 *VMMI plugins are implemented with standard UNIX processes*
 
 Using processes to implement the VMMI plugin, compared with shared objects (.so files) maximizes the flexibility, and sets the lowest possible entry barrier.
-Furthermore, the damage done by a faulty policy is minimized.
+Furthermore, using processes to implement VMMI plugin, we make impossible for a bad VMMI plugin to make crash either libvirt or the management application.
 
 ## One process vs multiple processes
 
