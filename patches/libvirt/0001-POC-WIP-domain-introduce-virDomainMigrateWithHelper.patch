@@ -1,0 +1,209 @@
+From 99d68fe8a9415d4f428411a9397cc2f55904e5b8 Mon Sep 17 00:00:00 2001
+From: Francesco Romani <fromani@redhat.com>
+Date: Mon, 11 Jun 2018 15:24:02 +0200
+Subject: [PATCH] POC: WIP: domain: introduce virDomainMigrateWithHelper
+
+Highly volatile POC
+
+Signed-off-by: Francesco Romani <fromani@redhat.com>
+---
+ include/libvirt/libvirt-domain.h |   5 ++
+ src/libvirt-domain.c             | 146 +++++++++++++++++++++++++++++++
+ src/libvirt_public.syms          |   1 +
+ 3 files changed, 152 insertions(+)
+
+diff --git a/include/libvirt/libvirt-domain.h b/include/libvirt/libvirt-domain.h
+index da773b76cb..5753ee7a13 100644
+--- a/include/libvirt/libvirt-domain.h
++++ b/include/libvirt/libvirt-domain.h
+@@ -1039,6 +1039,11 @@ int virDomainMigrateToURI3(virDomainPtr domain,
+                            unsigned int nparams,
+                            unsigned int flags);
+ 
++int virDomainMigrateToURIWithHelper(virDomainPtr domain,
++                                    const char *dconnuri,
++                                    const char *hname,
++                                    const char *hconf);
++
+ int virDomainMigrateGetMaxDowntime(virDomainPtr domain,
+                                    unsigned long long *downtime,
+                                    unsigned int flags);
+diff --git a/src/libvirt-domain.c b/src/libvirt-domain.c
+index d44b553c74..55618e5055 100644
+--- a/src/libvirt-domain.c
++++ b/src/libvirt-domain.c
+@@ -25,6 +25,8 @@
+ 
+ #include "datatypes.h"
+ #include "viralloc.h"
++#include "vircommand.h"
++#include "virjson.h"
+ #include "virfile.h"
+ #include "virlog.h"
+ #include "virtypedparam.h"
+@@ -4260,6 +4262,150 @@ virDomainMigrateToURI3(virDomainPtr domain,
+ }
+ 
+ 
++#define VIR_HELPER_DIR "/usr/libexec/virt-migration-helpers/"
++
++
++static int
++processErrorResponse(const char *msg)
++{
++    const char *value;
++    const char *errorMessage;
++    const char *errorDetails;
++    int errorCode;
++    virJSONValuePtr errObj;
++    virJSONValuePtr obj;
++
++    if (!(obj = virJSONValueFromString(msg)) || (virJSONValueGetType(obj) != VIR_JSON_TYPE_OBJECT)) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s' isn't an object"), msg);
++        return -1;
++    }
++
++    value = virJSONValueObjectGetString(obj, "contentType");
++    if (value == NULL || !STREQ(value, "error")) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': unexpected contenType '%s'"), msg, value);
++        return -1;
++    }
++
++    errObj = virJSONValueObjectGetObject(obj, "error");
++    if (errObj == NULL) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': missing error payload"), msg);
++        return -1;
++    }
++
++    if (virJSONValueObjectGetNumberInt(errObj, "code", &errorCode) < 0) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': error parsing error code"), msg);
++        return -1;
++    }
++
++    errorMessage = virJSONValueObjectGetString(errObj, "message");
++    if (errorMessage == NULL) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': error parsing error message"), msg);
++        return -1;
++    }
++
++    errorDetails = virJSONValueObjectGetString(errObj, "details");
++    if (errorDetails == NULL) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': error parsing error details"), msg);
++        return -1;
++    }
++
++    virRaiseErrorFull(__FILE__, __FUNCTION__, __LINE__,
++                      VIR_FROM_THIS, errorCode, VIR_ERR_ERROR,
++                      errorMessage, /* str1 */
++                      errorDetails, /* str2 */
++                      NULL,         /* str3 */
++                      errorCode,    /* int1 */
++                      -1,           /* int2 */
++                      "%s",         /* fmt */
++                      errorMessage);
++
++    virJSONValueFree(obj);
++    return 0;
++}
++
++
++/**
++ * virDomainMigrateToURIWithHelper:
++ * @domain: a domain object
++ * @dconnuri: URI for target libvirtd
++ * @hname: name of the helper to use to supervise the migration
++ * @hconf: opaque configuration data for the helper
++ *
++ * Migrate the domain object from its current host to the destination host
++ * given by URI, using the provided helper
++ *
++ * Returns 0 if the migration succeeded, -1 upon error.
++ */
++int virDomainMigrateToURIWithHelper(virDomainPtr domain,
++                                    const char *dconnuri,
++                                    const char *hname,
++                                    const char *hconf)
++{
++    char uuid[VIR_UUID_STRING_BUFLEN];
++    char *binpath;
++    char *binary;
++    char *errbuf;
++    int status;
++    int rc = -1;
++    virCommandPtr cmd = NULL;
++
++    VIR_DOMAIN_DEBUG(domain, "dconnuri=%s, hname=%s, hconf=%s",
++                     NULLSTR(dconnuri), NULLSTR(hname), NULLSTR(hconf));
++
++    virResetLastError();
++
++    /* First checkout the source */
++    virCheckDomainReturn(domain, -1);
++    virCheckNonNullArgGoto(dconnuri, cleanup);
++    virCheckNonNullArgGoto(hname, cleanup);
++    virCheckNonNullArgGoto(hconf, cleanup);
++    virCheckReadOnlyGoto(domain->conn->flags, cleanup);
++
++    virDomainGetUUIDString(domain, &uuid[0]);
++
++    binpath = virFileBuildPath(VIR_HELPER_DIR, hname, NULL);
++    if (binpath == NULL) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("failed to build the helper path for %s"), hname);
++        goto cleanup;
++    }
++
++    binary = realpath(binpath, NULL);
++    // TODO: re-validate realpath?
++
++    cmd = virCommandNewArgList(binary, uuid, dconnuri, "-", NULL);
++    virCommandClearCaps(cmd);
++    virCommandSetInputBuffer(cmd, hconf);
++    virCommandSetErrorBuffer(cmd, &errbuf);
++
++    if (virCommandRun(cmd, &status) < 0) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("failed to run helper %s"), hname);
++        goto cleanup;
++    }
++
++    if (status == 0) {
++        // per spec, the helper must have sent a status report,
++        // but we don't care about it yet
++        rc = 0;
++    } else {
++        processErrorResponse(errbuf);
++    }
++
++  cleanup:
++    virCommandFree(cmd);
++    VIR_FREE(errbuf);
++    VIR_FREE(binpath);
++    VIR_FREE(binary);
++    return rc;
++}
++
+ /*
+  * Not for public use.  This function is part of the internal
+  * implementation of migration in the remote case.
+diff --git a/src/libvirt_public.syms b/src/libvirt_public.syms
+index 4f54b84f75..a0d5b0baf9 100644
+--- a/src/libvirt_public.syms
++++ b/src/libvirt_public.syms
+@@ -796,6 +796,7 @@ LIBVIRT_4.5.0 {
+     global:
+         virGetLastErrorCode;
+         virGetLastErrorDomain;
++        virDomainMigrateToURIWithHelper;
+ } LIBVIRT_4.4.0;
+ 
+ # .... define new API here using predicted next version number ....
+-- 
+2.17.1
+
