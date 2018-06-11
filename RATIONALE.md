@@ -1,7 +1,7 @@
 # Virtual Machine Migrator Interface Rationale
 
 This document provides the high-level rationale for the decisions that lead to the VMMI specification.
-To read the rationale of the VMMI specification details, see SPEC.md
+To read the rationale of the VMMI specification details, see [the spec](https://github.com/fromanirh/vmmi/blob/master/SPEC.md)
 
 ## Policies placement
 
@@ -10,7 +10,8 @@ To read the rationale of the VMMI specification details, see SPEC.md
 Various management application implement their migration policies.
 Libvirt - the common infrastructure - should not implement policies. It should, like already does, offer tunables, knobs and protocols, letting the upper layers implementing their policies.
 To reduce duplication and improve interoperability, the only option left is isolate the migration policies in a third entity and add it to the picture: the VMMI plugins.
-Any management application using VMMI has still the option to have built-in policies. Using VMMI is about adding extensibility and flexibility.
+Any management application using VMMI has still the option to have built-in policies.
+VMMI just offers more flexibility.
 
 ## Language-agnostic
 
@@ -25,7 +26,8 @@ Using external processes to implement plugins poses no constraint to the impleme
 
 Adding new migration policies should be as simple as possible. Having a library with built-ins policies conflicts with this requirement.
 The only real option is to have a runtime, pluggable interface.
-In the future, libvirt may offer a facade to invoke VMMI plugins using the domain API, much like we do with current migration APIs. This change is minor and not invasive.
+In the future, libvirt may offer a [facade to invoke VMMI plugins using the domain API](https://github.com/fromanirh/vmmi/tree/master/patches/libvirt),
+much like we do with current migration APIs. This change is minor and not invasive.
 The change required to management application is very simple: just call a different, but similar, API (be it integrated in libvirt or in an ancillary library).
 
 ## Shared objects vs processes
@@ -39,9 +41,9 @@ Furthermore, using processes to implement VMMI plugin, we make impossible for a 
 
 *Each VMMI plugin implements one migration policy*
 
-An implementation option could have been to integrate a policy engine in a plugin, or even in libvirt. We believe this approach is unpractical, because it requires the embedding
-of a programming language, making the complexitry explode.
-Please note that the VMMI specifications doesn't intentionally make impossible to embed such an engine (or embedded language like lua or a lisp dialect) inside a VMMi compliant plugin,
-but it also does nothing to encourage this approach.
+An implementation option could have been to integrate a policy engine in a plugin, or even in libvirt.
+We believe this approach is unpractical, because it requires the embedding of a programming language, making the complexity skyrocket.
+Please note that the VMMI specifications doesn't intentionally make impossible to embed such an engine (or embedded language like lua
+or a lisp dialect) inside a VMMi compliant plugin, but it also does nothing to encourage this approach.
 The simplest possible solution is to implement each policy in a separate plugin process, to maximize isolation and to reduce the API surface.
 This is the preferred implementation of VMMI plugins.
