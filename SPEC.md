@@ -15,7 +15,7 @@ This solutions aims to provide
 1. a common interface to make the migration policies pluggable.
 2. a mean to make the migration policies thus interchangeable across management applications.
 
-The key words "must", "must not", "required", "shall", "shall not", "should", "should not", "recommended", "may" and "optional" are used as specified in [RFC 2119][rfc-2119].
+The key words "must", "must not", "required", "shall", "shall not", "should", "should not", "recommended", "may" and "optional" are used as specified in [RFC 2119](https://www.ietf.org/rfc/rfc2119.txt).
 
 ## General Considerations
 
@@ -170,7 +170,7 @@ A VMMI compliant plugin is expected to honour the above keys. It cannot read and
 
 ### Plugin runtime data
 
-TBD
+Each VMMI compliant plugin is responsible for storing, cleaning up and recovering any runtime data it may need.
 
 ### Plugin input
 
