@@ -12,11 +12,11 @@ Live migrating a Virtual Machine is the process of moving the virtual machine pr
 disruption to the service(s) provided by the guest, and without the guest noticing.
 
 Performing the live migration is a complex task, which has many possible solutions. Despite being implemented by many management application, is not yet a solved problem.
-Assumiong that the source and destination sides are fully compatible, thus the live migration process can start and has a chance to succesfully complete, still the
+Assuming that the source and destination sides are fully compatible, thus the live migration process can start and has a chance to successfully complete, still the
 The live migration process can fail for many reasons, including the workload of the guest, and the state of the live migration medium (e.g. the network link).
 
 Most management applications implements live migration policies, e.g. monitor the state of the migration and tune the knobs exposed by the hypervisor (in our case, by the libvirt interface)
-to help the migration finish (converge) succesfully, or abort if a timeout expired.
+to help the migration finish (converge) successfully, or abort if a timeout expired.
 A migration policy can be thought as a process monitoring the migration state and changing the migration settings according to some rules to produced a desired outcome.
 
 The purpose of VMMI is to encapsulate the migration policies in external entities -the plugins- and make them agnostic with respect to the management application, to make them interchangeable.

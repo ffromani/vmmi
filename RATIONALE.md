@@ -17,7 +17,7 @@ VMMI just offers more flexibility.
 
 *VMMI is language agnostic, and uses well-known, largely available tools to integrate with the existing stack*
 
-The VMMI specs involve calling external processes using the standard linux tools, and exchanging JSON messages, which is a widely available and simple format.
+The VMMI specs involve calling external processes using the standard Linux tools, and exchanging JSON messages, which is a widely available and simple format.
 Using external processes to implement plugins poses no constraint to the implementation language.
 
 ## Integration in libraries
@@ -43,7 +43,7 @@ Furthermore, using processes to implement VMMI plugin, we make impossible for a 
 
 An implementation option could have been to integrate a policy engine in a plugin, or even in libvirt.
 We believe this approach is unpractical, because it requires the embedding of a programming language, making the complexity skyrocket.
-Please note that the VMMI specifications doesn't intentionally make impossible to embed such an engine (or embedded language like lua
+Please note that the VMMI specifications doesn't intentionally make impossible to embed such an engine (or embedded language like LUA
 or a lisp dialect) inside a VMMi compliant plugin, but it also does nothing to encourage this approach.
 The simplest possible solution is to implement each policy in a separate plugin process, to maximize isolation and to reduce the API surface.
 This is the preferred implementation of VMMI plugins.

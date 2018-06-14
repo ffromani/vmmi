@@ -1,17 +1,19 @@
 # Virtual Machine Migrator Interface Specification 
 
 ## Version
-This is VMMI spec version 0.1.0 (201806)
+This is VMMI spec version 0.2.0
 
 ## Overview
 
-This document proposes a generic plugin-based migration policy solution for virtual machine managers on Linux, the _Virtual Machine Migrator Interface_, or _VMMI_.
+This document proposes a generic migration policy approach for virtual machine managers on Linux, the _Virtual Machine Migrator Interface_, or _VMMI_.
 In this document we always use the term 'migration' as shortcut for 'live migration' - the process of migrating a VM while the guest is running, with minimal or no disruption
 to the Guest workload, and without the guest noticing.
 
 Migrating a VM is not a simple task, with many tradeoffs to consider and knobs to tune to make the operation succeed.
 Each different management applications implements their own logic and policies to adapt to use cases.
+
 This solutions aims to provide
+
 1. a common interface to make the migration policies pluggable.
 2. a mean to make the migration policies thus interchangeable across management applications.
 
@@ -19,36 +21,39 @@ The key words "must", "must not", "required", "shall", "shall not", "should", "s
 
 ## General Considerations
 
-- the management application is built on top of libvirt
-- the VMMI migration model is limited to the [managed peer to peer model](https://libvirt.org/migration.html#flowpeer2peer)
-- the management application must set up anything the VM requires to run (e.g. shared storage) before to engage the VMMI plugins
-- the management application is in charge to clean up the resources required by the VM to run
-- the usage of a VMMI plugin replaces any call to the [virDomainMigrateToURI API family](https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainMigrateToURI3)
+- the management application is built on top of libvirt, so it uses the [libvirt APIs](https://libvirt.org/html/index.html) to manage VMs, including migrations.
+- the VMMI migration model is limited to the [managed peer to peer model](https://libvirt.org/migration.html#flowpeer2peer) (*TODO: this may change before the spec is finalized*)
+- the management application must set up anything the VM requires to run (e.g. shared storage) before to engage the VMMI implementations.
+- the management application is in charge to clean up the resources required by the VM to run.
+- the usage of a VMMI implementation replaces any call to the [virDomainMigrateToURI API family](https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainMigrateToURI3).
 
-### Messages: exchanging data with the client application
+## Design principles
 
-Any exchange of data between a VMMI plugin and the client application must happen through JSON messages.
+The purpose of a VMMI implementation is to fully encapsulate a migration policy and its implementation in a self contained unit of code (the callee), opaque to the management application (the caller).
+
+The management application offloads completely the task to the implementation, with no dynamic tuning.
+
+In other words, the management application is expected to run the VMMI implementation and wait for its completion, reading back only the operation status once the operation completed - whatever the result.
+For this reason, the VMMI implementation must stay silent with respect to its caller: any message it may sent is not-actionable, thus useless.
+The VMMI implementation and the management application will use independent connection to libvirt to consume the migration stats.
+
+
+### Messages: exchanging data with the outside world
+
+Any exchange of data between a VMMI implementation and anything else.
 Each JSON message must have at least those keys:
 
-- "vmmiVersion" (string): version of the VMMI SPEC this message complies to. Current value must be "0.1.0"
+- "vmmiVersion" (string): version of the VMMI SPEC this message complies to. Current value must be "0.2.0"
 - "contentType" (string): describes the content of the message, e.g the not-specified, message-variable fields.
   The value of the key is not specified. Some values, however, are reserved for well-known messages. The reserved fields are
-  - "configuration": for plugin configuration
-  - "error": for error message(s).
+  - "configuration": for configuration info
+  - "completion": for migration completion report
 
-Each message except the ones with "contentType": "configuration" must have one additional mandatory field
+The following fields are optional for "contentType": "configuration", and mandatory for each other message
 
 - "timestamp" (uint): seconds since UNIX EPOCH (1970/01/01 00:00:00.00) - aka UNIX time
 
-Each message must have either three or four toplevel keys
-
-- any message with "contenType" not "configuration" must have four keys:
-  - vmmiVersion
-  - contentType
-  - timestamp
-  - <content>
-
-where "<content>" is the value of the "contentType" key. Example
+Example message:
 ```
   {
     "vmmiVersion": "0.1.0",
@@ -61,100 +66,63 @@ where "<content>" is the value of the "contentType" key. Example
   }
 ```
 
-- "configuration" messages must have three keys:
-  - vmmiVersion
-  - contentType
-  - configuration
+#### Input/Output principles
 
-Please note that also in this case the last well known key besides "vmmiVersion" and "contentType" is actually the value of the "contentType" key.
+A VMMI compliant implementation:
 
-## VMMI Plugin
+- must read the configuration message from either its stdin or a a file path given as parameter (see "Parameters");
+the implementation must not expect any other inbound message.
 
-### Overview
+- must report the final status of its execution to stderr. This may be either success or error. This is the
+only message a VMMI compliant implementation must send.
 
-A VMMI compliant plugin is a single executable which will be placed under the VMMI canonical directory.
-The VMMI canonical directory is `/usr/libexec/vmmi`.
-A VMMI compliant plugin may have any name as long as it is both a valid UTF8 name and a valid filesystem entry.
-The only reserved name is `migrate`, which must not be used and it is reserved to the implementation
+- should use stdout to send any other message. The implementation should assume that writing to stdout never blocks.
+It is a responsability to the mnagement app to ensure this is true. Please note that the management app is *not* required
+to consume those messages, it can just discard them - even just binding the stdout to /dev/null.
 
-### Lifecycle
+- may log other data to other channels (private log file, system log) using any other means, but it must not assume
+the client application reads those messages.
 
-A VMMI plugin is an operating system process which starts when the migration begins, and exits when "termination"
-conditions are met (see "Termination" section).
-A VMMI compliant plugin must never exceed the lifetime of a migration, except for the necessary termination
-and cleanup duties.
-A VMMI plugin is executed when the migration starts, but it must not perform any change to the system,
-including actually starting the migration using the libvirt APIs, until it got the configuration data (see Configuration)
+- must enforce the sequence of the messages and should not assume any implicit ordering provided by the channel.
+In other words, a VMMI compliant implementation must ensure the messages it emits are ordered from the source.
+This is done using the "timestamp" field of the messages.
 
-### Termination
+- must not abort if no configuration file is available.
 
-A VMMI compliant plugin is expected to terminate in the following cases:
-- crash (bug)
-- signal received - see "signal handling" below
-- libvirt reports the migration completed - either succesfully, or aborted
-
-If the plugin detects the operation is aborted, because of a bug, a signal received, or because notified by libvirt,
-it must do everything possible to properly clean up, freeing resources and leaving the system in a consistent state.
-
-### Failure model
-
-The introduction of VMMI plugins adds another entity between libvirt and the management application.
-If libvirt crashes, or if the VMMI plugin loses the connection to libvirt for any reason, it must exit with error.
-If the VM under migration disappears for any reason outside the control of a VMMI plugin, the VMMI plugin must exit with error.
-Please note that a VMMI plugin must expect and handle only those termination conditions: migration completed, migration aborted.
-Please note that the management application is free to abort the migraton (virDomainAbortJob) anytime outside the control of the VMMI plugin.
-A VMMI compliant plugin must treat the "migration aborted by the management application" state like the "migration aborted by the hypervisor"
-state and exit as soon as possible.
-If the VMMI plugin crashes, it must NOT try to abort the current migration process. See also the section "Recovering state".
-If the management application crashes, or terminates while the VMMI plugin is still running, the VMMI plugin must continue running as usual.
-
-### Signal handling
-
-A VMMI compliant plugin must react to the following signals
-
-
-- SIGTERM: exit early as possible, but MUST free any resources and clean up the system, must NOT abort the current migration
-- SIGSTOP: abort the current migration, perform any other operation like SIGTERM was received.
-- SIGINT: like SIGSTOP
-
-
-### Parameters
-
-A VMMI compliant plugin must support the following parameters:
-
-
-- VM uuid (required) - uuid of the VM to migrate.
-- destination URI (required) - URI of the migration destination.
-- the path to the configuration file (optional).
-
-
-The path may be a simple hyphen ('-'), which signals the plugin to read the configuration from standard input. The plugin must not perform any change to the system,
-including outputting any data to stdout or stderr, until it got either the configuration or error.
-If no path or no hyphen is specified, the plugin must either use its defaults and attempt to read the default configuration file: `/etc/vmmi/conf.d/<plugin>.json`.
-A VMMI compliant plugin must abort with error if the configuration file is given, and the data is malformed or partial.
-A VMMI compliant plugin must abort if it attempts to read the default configuration file and fails because the data is malformed or partial.
-
-### Configuration
-
-A VMMI compliant plugin must not abort if no configuration file is available, including the default
-file `/etc/vmmi/conf.d/<plugin>.json`. The given path always overrides the default.
-A VMMI compliant plugin must update its configuration file using this resolution order:
+- must update its configuration file using this resolution order:
 defaults, specified configuration. The most recent data must always overwrite the old
-A VMMI compliant plugin which reads its configuration from standard input should not expect the standard input
+
+- if the configuration is read from standard input, then it should not expect the standard input
 to be closed after it received the configuration data. However, it must ignore any additional data which
 may be sent through the standard input
 
-#### Configuration file content
+- must wait for the configuration message to be read before to perform any change to the system.
 
-The configuration of each plugin must support at least the following keys:
+#### Message ordering
+
+In the simplest case, a VMMI implementation just sends the Completion message to the management app (see specification below).
+
+The implementation can also send status messages not yet specified. In any case, the implementation must signal the ordering
+using the "timestamp" field of the messages.
+
+This applies
+- between status messages sent to stdout
+- between messages sent to stdout and the completion message sent to stderr
+
+The implementation must always take in account that the management app is free to multiplex stdout and stderr
+in the same channel (e.g. a pipe, or a socket)
+
+#### Message specification: Configuration
+
+The configuration data of each implementation must support at least the following keys:
 
 - "connection" (string): specifies how to connect to libvirt. Default is "qemu:///system"
 
-- "verbose" (int): sets the plugin verbosiness. A plugin sends output using stdout and stderr (see below).
+- "verbose" (int): sets the implementation verbosiness. A implementation sends output using stdout and stderr (see below).
   The following values are defined:
-  * 0: the plugin is completely silent except for fatal error messages
+  * 0: the implementation is completely silent except for fatal error messages
 
-Example configuration file
+Example configuration message
 ```
   {
     "vmmiVersion": "0.1.0",
@@ -166,64 +134,143 @@ Example configuration file
   }
 ```
 
-A VMMI compliant plugin is expected to honour the above keys. It cannot read and silently discard them.
+A VMMI compliant implementation is expected to honour the above keys. It cannot read and silently discard them.
 
-### Plugin runtime data
 
-Each VMMI compliant plugin is responsible for storing, cleaning up and recovering any runtime data it may need.
+#### Message specification: Completion
 
-### Plugin input
+A VMMI compliant implementation must always report its termination -except for crashes- sending a Completion message to its client.
 
-Currently not supported. A compliant plugin should expect not to receive input from any source other than the configuration data.
+The "Completion" message has a different layout depending on the migration terminated succesfully or with error.
+Should the migration succeed, a VMMI compliant implementation must signal this state sending an Completion message with a "success" payload.
 
-### Plugin output
+The completion payload has one mandatory key, "result".
 
-VMMI plugins are expected to be quiet with respect to their client application.
-A VMMI compliant plugin is expected to send only error messages to the client application.
-A VMMI compliant plugin should use a private log file to log status or debug information.
-A VMMI compliant plugin may send status and debug information to its client application, but the format of the messages used to
-report this information is intentionally unspecified.
+The value of the "result" key may be either "success" for migration completed correctly, or "error" otherwise.
+Like the top-level "contentType" key, the "completion" payload will have another key depending on the value of "result".
 
-#### Sending messages to the client application
-
-A VMMI compliant plugin may use both standard output (stdout) and standard error (stderr) to communicate with the client application.
-It must not assume any other communication channel.
-A VMMI compliant plugin may log other data to other channels (private log file, system log) using any other means, but it must not assume
-the client application access those messages.
-A VMMI compliant plugin must not assume stdout and stderr are separate channels. A client application is free to multiplex them both
-in another channel (e.g. a socket, a pipe) before to launch a VMMI plugin.
-A VMMI compliant plugin must enforce the sequence of the messages and should not assume any implicit ordering provided by the channel.
-In other words, a VMMI compliant plugin must ensure the messages it emits are ordered from the source.
-
-#### The Error messages
-
-A VMMI compliant plugin must always report its termination -except for crashes sending an Error message to its client.
-Should the migration succeed, a VMMI compliant plugin must signal this state sending an Error message with "code": 0 (no error) and empty message.
-
-Example of succesful termination
+- if "result" equals to "success", the "completion" payload must have another key "success", whose value must be an object.
+The content of that object is not specified. A empty object is a valid value.
+Example of succesfull termination
 ```
   {
     "vmmiVersion": "0.1.0",
     "timestamp": 1528117329,
-    "contentType": "error",
-    "error": {
-      "code": 0,
-      "message": "",
-      "details": "migration completed in 42.1s"
+    "contentType": "completion",
+    "completion": {
+      "result": "success",
+      "success": {}
     }
   }
 ```
+
+- if "result" equals to "error", the "completion" payload must have another key "error", whose value must be an object which
+must hold three more keys:
+  - "code" (int): error code
+  - "message" (string): succint message describing the error, like a log entry
+  - "details" (string): more user-friendly and verbose error description.
 
 Example of failed migration report message:
 ```
   {
     "vmmiVersion": "0.1.0",
     "timestamp": 1528117329,
-    "contentType": "error",
-    "error": {
-      "code": 42,
-      "message": "generic error",
-      "details": "generic error explained in a user-friendly way"
+    "contentType": "completion",
+    "completion": {
+      "result": "error",
+      "error": {
+        "code": 42,
+        "message": "generic error",
+        "details": "generic error explained in a user-friendly way"
+      }
     }
   }
 ```
+
+## VMMI Implementations
+
+### Overview
+
+A VMMI compliant implementation is a single executable which will be placed under the VMMI canonical directory.
+The VMMI canonical directory is `/usr/libexec/vmmi`. (*TODO: this may change before the spec is finalized*)
+
+A VMMI compliant implementation may have any name as long as it is both a valid UTF8 name and a valid filesystem entry.
+The only reserved name is `migrate`, which must not be used and it is reserved to the implementation
+
+### Lifecycle
+
+A VMMI compliant implementation:
+
+- must be implemented using an operating system process which starts when the migration begins, and exits when "termination"
+conditions are met (see "Termination" section).
+- must never exceed the lifetime of a migration, except for the necessary termination
+and cleanup duties.
+- is executed when the migration starts, but it must not perform any change to the system,
+including actually starting the migration using the libvirt APIs, until it got the configuration data (see Configuration)
+
+### Termination
+
+A VMMI compliant implementation is expected to terminate in the following cases:
+- crash (bug)
+- signal received - see "signal handling" below
+- libvirt reports the migration completed - either succesfully, or aborted
+
+If the implementation detects the operation is aborted, because of a bug, a signal received, or because notified by libvirt,
+it must do everything possible to properly clean up, freeing resources and leaving the system in a consistent state.
+
+### Failure model
+
+The introduction of VMMI implementations adds another entity between libvirt and the management application.
+
+If libvirt crashes, or if the VMMI implementation loses the connection to libvirt for any reason, it must exit with error.
+
+If the VM under migration disappears for any reason outside the control of a VMMI implementation, the VMMI implementation must exit with error.
+Please note that a VMMI implementation must expect and handle only those termination conditions: migration completed, migration aborted.
+Please note that the management application is free to abort the migration (e.g. calling virDomainAbortJob) anytime outside the control of the VMMI implementation.
+
+A VMMI compliant implementation must treat the "migration aborted by the management application" state like the "migration aborted by the hypervisor"
+state and exit as soon as possible.
+
+If the VMMI implementation crashes, it must NOT try to abort the current migration process. See also the section "Recovering state".
+If the management application crashes, or terminates while the VMMI implementation is still running, the VMMI implementation must continue running as usual.
+
+### Recovering state
+
+When a VMMI compliant implementation starts, it must check if a migration is already in progress. If so, it must take control of it and start enforcing
+the policy. A VMMI compliant implementation must not assume that a migration currently in progress was started by a previous instance of itself.
+
+Should a management application using VMMI detect the crash of a VMMI implementation, it is free to take any action, including running again the
+same VMMI implementation, running a different one or do nothing.
+
+### Signal handling
+
+A VMMI compliant implementation must react to the following signals
+
+
+- SIGTERM: exit early as possible, but MUST free any resources and clean up the system, must NOT abort the current migration
+- SIGSTOP: abort the current migration, perform any other operation like SIGTERM was received.
+- SIGINT: like SIGSTOP
+
+
+### Parameters
+
+A VMMI compliant implementation must support the following parameters:
+
+
+- VM uuid (required) - uuid of the VM to migrate.
+- destination URI (required) - URI of the migration destination.
+- the path to the configuration file (optional).
+
+
+The path may be a simple hyphen ('-'), which signals the implementation to read the configuration from standard input. The implementation must not perform any change to the system,
+including outputting any data to stdout or stderr, until it got either the configuration or error.
+If no path or no hyphen is specified, the implementation must either use its defaults and attempt to read the default configuration file: `/etc/vmmi/conf.d/<implementation>.json`.
+
+A VMMI compliant implementation:
+
+- must abort with error if the configuration file is given, and the data is malformed or partial.
+- must abort if it attempts to read the default configuration file and fails because the data is malformed or partial.
+
+### Plugin runtime data
+
+Each VMMI compliant implementation is responsible for storing, cleaning up and recovering any runtime data it may need.
