@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+type StatusData struct {
+}
+
 type Options struct {
 	vmmi.Options
 	Delay string `json:"delay"`
@@ -40,19 +43,24 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM, syscall.SIGUSR1)
 
+	done := false
 	start := time.Now()
-	select {
-	case s := <-sigs:
-		switch s {
-		case syscall.SIGINT, syscall.SIGSTOP:
-			errCode = vmmi.ErrorCodeMigrationAborted
-		case syscall.SIGTERM:
-			errCode = vmmi.ErrorCodeNone
-		case syscall.SIGUSR1:
-			// catch and do nothing
+	for !done {
+		select {
+		case s := <-sigs:
+			switch s {
+			case syscall.SIGINT, syscall.SIGSTOP:
+				errCode = vmmi.ErrorCodeMigrationAborted
+				done = true
+			case syscall.SIGTERM:
+				errCode = vmmi.ErrorCodeNone
+				done = true
+			case syscall.SIGUSR1:
+				pc.Status(&StatusData{})
+			}
+		case <-t.C:
+			done = true
 		}
-	case <-t.C:
-		// do nothing
 	}
 	stop := time.Now()
 

@@ -125,3 +125,8 @@ func (pc *PluginContext) CompleteWithErrorValue(code int, err error) {
 	details := fmt.Sprintf("%s", err)
 	pc.CompleteWithErrorDetails(code, details)
 }
+
+func (pc *PluginContext) CompleteWithSuccess() {
+	ReportSuccess(pc.Out)
+	os.Exit(0)
+}
