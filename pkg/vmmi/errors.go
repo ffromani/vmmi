@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 )
 
@@ -20,16 +21,35 @@ const (
 	ErrorCodeLibvirtDisconnected
 )
 
+type SuccessData struct {
+}
+
+type SuccessCompletionData struct {
+	Result  string       `json:"result"`
+	Success *SuccessData `json:"success"`
+}
+
+type SuccessCompletionMessage struct {
+	Header
+	Timestamp  int64                  `json:"timestamp"`
+	Completion *SuccessCompletionData `json:"completion"`
+}
+
 type ErrorData struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Details string `json:"details"`
 }
 
-type ErrorMessage struct {
+type ErrorCompletionData struct {
+	Result string     `json:"result"`
+	Error  *ErrorData `json:"error"`
+}
+
+type ErrorCompletionMessage struct {
 	Header
-	Timestamp int64      `json:"timestamp"`
-	Error     *ErrorData `json:"error"`
+	Timestamp  int64                `json:"timestamp"`
+	Completion *ErrorCompletionData `json:"completion"`
 }
 
 func Strerror(code int) string {
@@ -58,17 +78,16 @@ func Strerror(code int) string {
 	return "unknown"
 }
 
-func Report(w io.Writer, code int, details string) {
-	msg := ErrorMessage{
+func ReportSuccess(w io.Writer) {
+	msg := SuccessCompletionMessage{
 		Header: Header{
-			Version: Version,
-			ContentType: MessageError,
+			Version:     Version,
+			ContentType: MessageCompletion,
 		},
 		Timestamp: time.Now().Unix(),
-		Error: &ErrorData{
-			Code:    code,
-			Message: Strerror(code),
-			Details: details,
+		Completion: &SuccessCompletionData{
+			Result:  CompletionResultSuccess,
+			Success: &SuccessData{},
 		},
 	}
 	// skip errors: we have no place to report them!
@@ -76,12 +95,33 @@ func Report(w io.Writer, code int, details string) {
 	enc.Encode(msg)
 }
 
-func (pc *PluginContext) Report(code int, details string) {
-	Report(pc.Out, code, details)
+func ReportError(w io.Writer, code int, details string) {
+	msg := ErrorCompletionMessage{
+		Header: Header{
+			Version:     Version,
+			ContentType: MessageCompletion,
+		},
+		Timestamp: time.Now().Unix(),
+		Completion: &ErrorCompletionData{
+			Result: CompletionResultError,
+			Error: &ErrorData{
+				Code:    code,
+				Message: Strerror(code),
+				Details: details,
+			},
+		},
+	}
+	// skip errors: we have no place to report them!
+	enc := json.NewEncoder(w)
+	enc.Encode(msg)
 }
 
+func (pc *PluginContext) CompleteWithErrorDetails(code int, details string) {
+	ReportError(pc.Out, code, details)
+	os.Exit(1)
+}
 
-func (pc *PluginContext) ReportError(code int, err error) {
+func (pc *PluginContext) CompleteWithErrorValue(code int, err error) {
 	details := fmt.Sprintf("%s", err)
-	pc.Report(code, details)
+	pc.CompleteWithErrorDetails(code, details)
 }

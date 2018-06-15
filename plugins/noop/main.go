@@ -24,22 +24,21 @@ func main() {
 	conf := PluginConfiguration{}
 	pc := &vmmi.PluginContext{
 		Config: &conf,
-		Out:    os.Stdout,
+		Out:    os.Stderr,
 	}
 	pc.Parse(os.Args)
 
 	delay, err := time.ParseDuration(conf.Configuration.Delay)
 	if err != nil {
 		details = fmt.Sprintf("bad delay specification: %s", conf.Configuration.Delay)
-		pc.Report(vmmi.ErrorCodeMalformedParameters, details)
-		os.Exit(1)
+		pc.CompleteWithErrorDetails(vmmi.ErrorCodeMalformedParameters, details)
 	}
 
 	errCode := vmmi.ErrorCodeMigrationFailed
 
 	t := time.NewTimer(delay)
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM, syscall.SIGUSR1)
 
 	start := time.Now()
 	select {
@@ -49,6 +48,8 @@ func main() {
 			errCode = vmmi.ErrorCodeMigrationAborted
 		case syscall.SIGTERM:
 			errCode = vmmi.ErrorCodeNone
+		case syscall.SIGUSR1:
+			// catch and do nothing
 		}
 	case <-t.C:
 		// do nothing
@@ -56,6 +57,5 @@ func main() {
 	stop := time.Now()
 
 	details = fmt.Sprintf("cannot migrate VM %s to %s using %s (took %v)", pc.Params.VMid, pc.Params.DestinationURI, conf.Configuration.ConnectionURI, stop.Sub(start))
-	pc.Report(errCode, details)
-	os.Exit(1)
+	pc.CompleteWithErrorDetails(errCode, details)
 }

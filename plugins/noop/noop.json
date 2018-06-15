@@ -1,5 +1,5 @@
 {
-  "vmmiVersion": "0.1.0",
+  "vmmiVersion": "0.2.0",
   "contentType": "configuration",
   "configuration": {
     "connection": "qemu:///system",

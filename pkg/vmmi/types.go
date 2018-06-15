@@ -2,10 +2,13 @@ package vmmi
 
 import "io"
 
-const Version string = "0.1.0"
+const Version string = "0.2.0"
 
 const MessageConfiguration string = "configuration"
-const MessageError string = "error"
+const MessageCompletion string = "completion"
+
+const CompletionResultError string = "error"
+const CompletionResultSuccess string = "success"
 
 type Header struct {
 	Version     string `json:"vmmiVersion"`
