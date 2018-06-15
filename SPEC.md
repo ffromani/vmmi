@@ -56,7 +56,7 @@ The following fields are optional for "contentType": "configuration", and mandat
 Example message:
 ```
   {
-    "vmmiVersion": "0.1.0",
+    "vmmiVersion": "0.2.0",
     "timestamp": 1528117452,
     "contentType": "foobar",
     "foobar": {
@@ -77,8 +77,13 @@ the implementation must not expect any other inbound message.
 only message a VMMI compliant implementation must send.
 
 - should use stdout to send any other message. The implementation should assume that writing to stdout never blocks.
-It is a responsability to the mnagement app to ensure this is true. Please note that the management app is *not* required
+It is a responsability to the management app to ensure this is true. Please note that the management app is *not* required
 to consume those messages, it can just discard them - even just binding the stdout to /dev/null.
+
+- must send messages to stdout only when requested by the management application, and must never send unsolicited messages.
+The management application must send a specific signal (see "Signal handling") to request a new status message to be sent.
+The VMMI implementation must send a status message as soon as possible once the signal is received.
+The VMMI implementation must send *at most* one status message for each signal received.
 
 - may log other data to other channels (private log file, system log) using any other means, but it must not assume
 the client application reads those messages.
@@ -125,7 +130,7 @@ The configuration data of each implementation must support at least the followin
 Example configuration message
 ```
   {
-    "vmmiVersion": "0.1.0",
+    "vmmiVersion": "0.2.0",
     "contentType": "configuration",
     "configuration": {
       "connection": "qemu:///system",
@@ -141,7 +146,7 @@ A VMMI compliant implementation is expected to honour the above keys. It cannot 
 
 A VMMI compliant implementation must always report its termination -except for crashes- sending a Completion message to its client.
 
-The "Completion" message has a different layout depending on the migration terminated succesfully or with error.
+The "Completion" message has a different layout depending on the migration terminated successfully or with error.
 Should the migration succeed, a VMMI compliant implementation must signal this state sending an Completion message with a "success" payload.
 
 The completion payload has one mandatory key, "result".
@@ -154,7 +159,7 @@ The content of that object is not specified. A empty object is a valid value.
 Example of succesfull termination
 ```
   {
-    "vmmiVersion": "0.1.0",
+    "vmmiVersion": "0.2.0",
     "timestamp": 1528117329,
     "contentType": "completion",
     "completion": {
@@ -173,7 +178,7 @@ must hold three more keys:
 Example of failed migration report message:
 ```
   {
-    "vmmiVersion": "0.1.0",
+    "vmmiVersion": "0.2.0",
     "timestamp": 1528117329,
     "contentType": "completion",
     "completion": {
@@ -213,7 +218,7 @@ including actually starting the migration using the libvirt APIs, until it got t
 A VMMI compliant implementation is expected to terminate in the following cases:
 - crash (bug)
 - signal received - see "signal handling" below
-- libvirt reports the migration completed - either succesfully, or aborted
+- libvirt reports the migration completed - either successfully, or aborted
 
 If the implementation detects the operation is aborted, because of a bug, a signal received, or because notified by libvirt,
 it must do everything possible to properly clean up, freeing resources and leaving the system in a consistent state.
@@ -247,9 +252,10 @@ same VMMI implementation, running a different one or do nothing.
 A VMMI compliant implementation must react to the following signals
 
 
-- SIGTERM: exit early as possible, but MUST free any resources and clean up the system, must NOT abort the current migration
+- SIGUSR1: send a new status message to stdout as soon as possible.
+- SIGTERM: exit early as possible, but MUST free any resources and clean up the system, must NOT abort the current migration.
 - SIGSTOP: abort the current migration, perform any other operation like SIGTERM was received.
-- SIGINT: like SIGSTOP
+- SIGINT: like SIGSTOP.
 
 
 ### Parameters
