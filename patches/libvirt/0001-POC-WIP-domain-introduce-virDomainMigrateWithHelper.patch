@@ -1,16 +1,20 @@
-From 99d68fe8a9415d4f428411a9397cc2f55904e5b8 Mon Sep 17 00:00:00 2001
+From 4072b17f3a59448f766fe08d8e85fc61283d76cf Mon Sep 17 00:00:00 2001
 From: Francesco Romani <fromani@redhat.com>
 Date: Mon, 11 Jun 2018 15:24:02 +0200
 Subject: [PATCH] POC: WIP: domain: introduce virDomainMigrateWithHelper
 
 Highly volatile POC
 
+TODO:
+- improve docs
+- add tests
+
 Signed-off-by: Francesco Romani <fromani@redhat.com>
 ---
- include/libvirt/libvirt-domain.h |   5 ++
- src/libvirt-domain.c             | 146 +++++++++++++++++++++++++++++++
+ include/libvirt/libvirt-domain.h |   5 +
+ src/libvirt-domain.c             | 171 +++++++++++++++++++++++++++++++
  src/libvirt_public.syms          |   1 +
- 3 files changed, 152 insertions(+)
+ 3 files changed, 177 insertions(+)
 
 diff --git a/include/libvirt/libvirt-domain.h b/include/libvirt/libvirt-domain.h
 index da773b76cb..5753ee7a13 100644
@@ -29,7 +33,7 @@ index da773b76cb..5753ee7a13 100644
                                     unsigned long long *downtime,
                                     unsigned int flags);
 diff --git a/src/libvirt-domain.c b/src/libvirt-domain.c
-index d44b553c74..55618e5055 100644
+index d44b553c74..52c64cdfc2 100644
 --- a/src/libvirt-domain.c
 +++ b/src/libvirt-domain.c
 @@ -25,6 +25,8 @@
@@ -41,41 +45,26 @@ index d44b553c74..55618e5055 100644
  #include "virfile.h"
  #include "virlog.h"
  #include "virtypedparam.h"
-@@ -4260,6 +4262,150 @@ virDomainMigrateToURI3(virDomainPtr domain,
+@@ -4260,6 +4262,175 @@ virDomainMigrateToURI3(virDomainPtr domain,
  }
  
  
 +#define VIR_HELPER_DIR "/usr/libexec/virt-migration-helpers/"
-+
++#define CONTENT_TYPE_COMPLETION "completion"
++#define RESULT_ERROR "error"
 +
 +static int
-+processErrorResponse(const char *msg)
++raiseErrorFromPayload(virJSONValuePtr errObj, const char *msg)
 +{
-+    const char *value;
 +    const char *errorMessage;
 +    const char *errorDetails;
 +    int errorCode;
-+    virJSONValuePtr errObj;
-+    virJSONValuePtr obj;
 +
-+    if (!(obj = virJSONValueFromString(msg)) || (virJSONValueGetType(obj) != VIR_JSON_TYPE_OBJECT)) {
-+        virReportError(VIR_ERR_INTERNAL_ERROR,
-+                       _("Parsed JSON reply '%s' isn't an object"), msg);
-+        return -1;
-+    }
-+
-+    value = virJSONValueObjectGetString(obj, "contentType");
-+    if (value == NULL || !STREQ(value, "error")) {
-+        virReportError(VIR_ERR_INTERNAL_ERROR,
-+                       _("Parsed JSON reply '%s': unexpected contenType '%s'"), msg, value);
-+        return -1;
-+    }
-+
-+    errObj = virJSONValueObjectGetObject(obj, "error");
 +    if (errObj == NULL) {
 +        virReportError(VIR_ERR_INTERNAL_ERROR,
 +                       _("Parsed JSON reply '%s': missing error payload"), msg);
 +        return -1;
++
 +    }
 +
 +    if (virJSONValueObjectGetNumberInt(errObj, "code", &errorCode) < 0) {
@@ -108,8 +97,48 @@ index d44b553c74..55618e5055 100644
 +                      "%s",         /* fmt */
 +                      errorMessage);
 +
-+    virJSONValueFree(obj);
 +    return 0;
++}
++
++static int
++processCompletionErrorMessage(const char *msg)
++{
++    const char *value;
++    virJSONValuePtr complObj;
++    virJSONValuePtr obj;
++    int rc;
++
++    if (!(obj = virJSONValueFromString(msg)) || (virJSONValueGetType(obj) != VIR_JSON_TYPE_OBJECT)) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s' isn't an object"), msg);
++        return -1;
++    }
++
++    value = virJSONValueObjectGetString(obj, "contentType");
++    if (value == NULL || !STREQ(value, CONTENT_TYPE_COMPLETION)) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': unexpected contentType '%s'"), msg, value);
++        return -1;
++    }
++
++    complObj = virJSONValueObjectGetObject(obj, CONTENT_TYPE_COMPLETION);
++    if (complObj == NULL) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': missing completion payload"), msg);
++        return -1;
++    }
++
++    value = virJSONValueObjectGetString(complObj, "result");
++    if (!STREQ(value, RESULT_ERROR)) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("Parsed JSON reply '%s': unexpected completion payload '%s'"), msg, value);
++        return -1;
++    }
++
++    rc = raiseErrorFromPayload(virJSONValueObjectGetObject(complObj, RESULT_ERROR), msg);
++
++    virJSONValueFree(obj);
++    return rc;
 +}
 +
 +
@@ -174,11 +203,11 @@ index d44b553c74..55618e5055 100644
 +    }
 +
 +    if (status == 0) {
-+        // per spec, the helper must have sent a status report,
-+        // but we don't care about it yet
++        // we intentionally ignore any extra data on the successfull
++        // completion message.
 +        rc = 0;
 +    } else {
-+        processErrorResponse(errbuf);
++        processCompletionErrorMessage(errbuf);
 +    }
 +
 +  cleanup:
