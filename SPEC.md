@@ -84,6 +84,7 @@ to consume those messages, it can just discard them - even just binding the stdo
 The management application must send a specific signal (see "Signal handling") to request a new status message to be sent.
 The VMMI implementation must send a status message as soon as possible once the signal is received.
 The VMMI implementation must send *at most* one status message for each signal received.
+Both the VMMI implementation and the management application must treat the delivery of status messages as best effort.
 
 - may log other data to other channels (private log file, system log) using any other means, but it must not assume
 the client application reads those messages.

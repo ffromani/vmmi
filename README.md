@@ -6,6 +6,14 @@ VMMI (_Virtual Machine Migrator Interface_) consists of a specification and libr
 live migration of virtual machines across hosts, along with a number of supported plugins.
 VMMI concerns itself only with the migration of the VMs, using [libvirt](http://libvirt.org) in the [managed peer to peer mode](https://libvirt.org/migration.html#flowpeer2peer).
 
+## VMMI highlights:
+
+1. Let's implement migration policies as helper processes.
+2. The helper process own the migration - they start them, they tune its parameters at runtime.
+3. The management application can still abort or get the migration status using standard libvirt APIs.
+4. The helper process is used as "fire and forget" - the client just need to wait for completion and collect the exit status.
+5. The helper process will receive parameters and configuration at startup, no further interaction needed once it started.
+
 ## Why Develop VMMI?
 
 Live migrating a Virtual Machine is the process of moving the virtual machine process from one hypervisor to another, usually running on a different host, with minimal to none
