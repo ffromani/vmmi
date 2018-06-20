@@ -1,4 +1,4 @@
-From 4072b17f3a59448f766fe08d8e85fc61283d76cf Mon Sep 17 00:00:00 2001
+From 384c03f21de2dd9b4bd24c7e1e6a01744868015f Mon Sep 17 00:00:00 2001
 From: Francesco Romani <fromani@redhat.com>
 Date: Mon, 11 Jun 2018 15:24:02 +0200
 Subject: [PATCH] POC: WIP: domain: introduce virDomainMigrateWithHelper
@@ -7,17 +7,47 @@ Highly volatile POC
 
 TODO:
 - improve docs
-- add tests
 
 Signed-off-by: Francesco Romani <fromani@redhat.com>
 ---
- include/libvirt/libvirt-domain.h |   5 +
- src/libvirt-domain.c             | 171 +++++++++++++++++++++++++++++++
- src/libvirt_public.syms          |   1 +
- 3 files changed, 177 insertions(+)
+ include/libvirt/libvirt-domain.h              |   5 +
+ src/Makefile.am                               |   3 +
+ src/libvirt-domain.c                          |  47 +++
+ src/libvirt_public.syms                       |   1 +
+ src/util/Makefile.inc.am                      |   3 +
+ src/util/virmigrationhelper.c                 | 280 +++++++++++++++
+ src/util/virmigrationhelper.h                 |  42 +++
+ src/util/virmigrationhelperpriv.h             |  58 ++++
+ tests/Makefile.am                             |   7 +
+ .../response-empty.json                       |   0
+ .../response-failure-incomplete-1.json        |  11 +
+ .../response-failure-incomplete-2.json        |   8 +
+ .../response-failure-incomplete-3.json        |   8 +
+ .../response-failure-malformed-1.json         |  13 +
+ .../response-failure.json                     |  13 +
+ .../response-success-incomplete-1.json        |   8 +
+ .../response-success-incomplete-2.json        |   5 +
+ .../response-success.json                     |   9 +
+ tests/virmigrationhelpertest.c                | 321 ++++++++++++++++++
+ tests/virt-migration-helper-tester            |   5 +
+ 20 files changed, 847 insertions(+)
+ create mode 100644 src/util/virmigrationhelper.c
+ create mode 100644 src/util/virmigrationhelper.h
+ create mode 100644 src/util/virmigrationhelperpriv.h
+ create mode 100644 tests/virmigrationhelperdata/response-empty.json
+ create mode 100644 tests/virmigrationhelperdata/response-failure-incomplete-1.json
+ create mode 100644 tests/virmigrationhelperdata/response-failure-incomplete-2.json
+ create mode 100644 tests/virmigrationhelperdata/response-failure-incomplete-3.json
+ create mode 100644 tests/virmigrationhelperdata/response-failure-malformed-1.json
+ create mode 100644 tests/virmigrationhelperdata/response-failure.json
+ create mode 100644 tests/virmigrationhelperdata/response-success-incomplete-1.json
+ create mode 100644 tests/virmigrationhelperdata/response-success-incomplete-2.json
+ create mode 100644 tests/virmigrationhelperdata/response-success.json
+ create mode 100644 tests/virmigrationhelpertest.c
+ create mode 100755 tests/virt-migration-helper-tester
 
 diff --git a/include/libvirt/libvirt-domain.h b/include/libvirt/libvirt-domain.h
-index da773b76cb..5753ee7a13 100644
+index da773b76cb..9156340c66 100644
 --- a/include/libvirt/libvirt-domain.h
 +++ b/include/libvirt/libvirt-domain.h
 @@ -1039,6 +1039,11 @@ int virDomainMigrateToURI3(virDomainPtr domain,
@@ -26,38 +56,325 @@ index da773b76cb..5753ee7a13 100644
  
 +int virDomainMigrateToURIWithHelper(virDomainPtr domain,
 +                                    const char *dconnuri,
-+                                    const char *hname,
-+                                    const char *hconf);
++                                    const char *helpername,
++                                    const char *helperconf);
 +
  int virDomainMigrateGetMaxDowntime(virDomainPtr domain,
                                     unsigned long long *downtime,
                                     unsigned int flags);
+diff --git a/src/Makefile.am b/src/Makefile.am
+index db8c8ebd1a..50efc02a7d 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -691,6 +691,7 @@ libvirt_setuid_rpc_client_la_SOURCES = \
+ 		util/virhostcpu.c \
+ 		util/virjson.c \
+ 		util/virlog.c \
++		util/virmigrationhelper.c \
+ 		util/virobject.c \
+ 		util/virpidfile.c \
+ 		util/virprocess.c \
+@@ -967,6 +968,8 @@ libvirt_nss_la_SOURCES = \
+ 		util/virlease.h \
+ 		util/virlog.c \
+ 		util/virlog.h \
++		util/virmigrationhelper.c \
++		util/virmigrationhelper.h \
+ 		util/virmacmap.c \
+ 		util/virmacmap.h \
+ 		util/virobject.c \
 diff --git a/src/libvirt-domain.c b/src/libvirt-domain.c
-index d44b553c74..52c64cdfc2 100644
+index d44b553c74..d7ad20611b 100644
 --- a/src/libvirt-domain.c
 +++ b/src/libvirt-domain.c
-@@ -25,6 +25,8 @@
- 
- #include "datatypes.h"
+@@ -27,6 +27,7 @@
  #include "viralloc.h"
-+#include "vircommand.h"
-+#include "virjson.h"
  #include "virfile.h"
  #include "virlog.h"
++#include "virmigrationhelper.h"
  #include "virtypedparam.h"
-@@ -4260,6 +4262,175 @@ virDomainMigrateToURI3(virDomainPtr domain,
+ 
+ VIR_LOG_INIT("libvirt.domain");
+@@ -4259,6 +4260,52 @@ virDomainMigrateToURI3(virDomainPtr domain,
+     return -1;
  }
  
++/**
++ * virDomainMigrateToURIWithHelper:
++ * @domain: a domain object
++ * @dconnuri: URI for target libvirtd
++ * @helpername: name of the helper to use to supervise the migration
++ * @helperconf: opaque configuration data for the helper
++ *
++ * Migrate the domain object from its current host to the destination host
++ * given by URI, using the provided helper
++ *
++ * Returns 0 if the migration succeeded, -1 upon error.
++ */
++int virDomainMigrateToURIWithHelper(virDomainPtr domain,
++                                    const char *dconnuri,
++                                    const char *helpername,
++                                    const char *helperconf)
++{
++    int ret = -1;
++    virMigrationHelperPtr mig;
++
++    VIR_DOMAIN_DEBUG(domain, "dconnuri=%s, helpername=%s, helperconf=%s",
++                     NULLSTR(dconnuri), NULLSTR(helpername), NULLSTR(helperconf));
++
++    virResetLastError();
++
++    /* First checkout the source */
++    virCheckDomainReturn(domain, -1);
++    virCheckNonNullArgReturn(dconnuri, -1);
++    virCheckNonNullArgReturn(helpername, -1);
++    virCheckNonNullArgReturn(helperconf, -1);
++    virCheckReadOnlyGoto(domain->conn->flags, done);
++
++    char uuid[VIR_UUID_STRING_BUFLEN];
++    virDomainGetUUIDString(domain, uuid);
++
++    mig = virMigrationHelperNew(uuid, helpername);
++    if (!mig)
++        goto done;
++
++    ret = virMigrationHelperRun(mig, dconnuri, helperconf);
++
++    virMigrationHelperFree(mig);
++
++  done:
++    return ret;
++}
  
+ /*
+  * Not for public use.  This function is part of the internal
+diff --git a/src/libvirt_public.syms b/src/libvirt_public.syms
+index 4f54b84f75..a0d5b0baf9 100644
+--- a/src/libvirt_public.syms
++++ b/src/libvirt_public.syms
+@@ -796,6 +796,7 @@ LIBVIRT_4.5.0 {
+     global:
+         virGetLastErrorCode;
+         virGetLastErrorDomain;
++        virDomainMigrateToURIWithHelper;
+ } LIBVIRT_4.4.0;
+ 
+ # .... define new API here using predicted next version number ....
+diff --git a/src/util/Makefile.inc.am b/src/util/Makefile.inc.am
+index a22265606c..4e5d45e10c 100644
+--- a/src/util/Makefile.inc.am
++++ b/src/util/Makefile.inc.am
+@@ -100,6 +100,9 @@ UTIL_SOURCES = \
+ 	util/virmacaddr.h \
+ 	util/virmacmap.c \
+ 	util/virmacmap.h \
++	util/virmigrationhelper.c \
++	util/virmigrationhelper.h \
++	util/virmigrationhelperpriv.h \
+ 	util/virmodule.c \
+ 	util/virmodule.h \
+ 	util/virnetdev.c \
+diff --git a/src/util/virmigrationhelper.c b/src/util/virmigrationhelper.c
+new file mode 100644
+index 0000000000..63715e23c5
+--- /dev/null
++++ b/src/util/virmigrationhelper.c
+@@ -0,0 +1,280 @@
++/*
++ * virmigrationhelper.c: Integration with migration helper processes
++ *
++ * Copyright (C) 2018 Red Hat, Inc.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library.  If not, see
++ * <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include <config.h>
++
++#include "viralloc.h"
++#include "vircommand.h"
++#include "virerror.h"
++#include "virutil.h"
++#include "virlog.h"
++#include "virfile.h"
++#include "virjson.h"
++#include "virstring.h"
++
++#include "virmigrationhelper.h"
++#define __VIR_MIGRATION_HELPER_PRIV_H_ALLOW__
++#include "virmigrationhelperpriv.h"
++
++
++#define VIR_FROM_THIS VIR_FROM_NONE
++
++VIR_LOG_INIT("util.migrationhelper");
++
++
 +#define VIR_HELPER_DIR "/usr/libexec/virt-migration-helpers/"
++
++
++static int
++processCompletionErrorMessage(const char *msg);
++
++static char *helpersDirectory = NULL;
++
++int
++virMigrationHelperSetDirectory(const char *dirname)
++{
++    VIR_FREE(helpersDirectory);
++    return VIR_STRDUP(helpersDirectory, dirname);
++}
++
++const char *
++virMigrationHelperGetDirectory(void)
++{
++    return (helpersDirectory == NULL) ?VIR_HELPER_DIR :helpersDirectory;
++}
++
++const char *
++virMigrationHelperGetFullPath(virMigrationHelperPtr mig)
++{
++    virCheckNonNullArgReturn(mig, NULL);
++    return mig->binary;
++}
++
++virMigrationHelperPtr
++virMigrationHelperNew(const char *uuid,
++                      const char *helpername)
++{
++    virMigrationHelperPtr mig;
++
++    if (VIR_ALLOC(mig) < 0)
++        return NULL;
++
++    if (VIR_STRDUP(mig->uuid, uuid) < 0)
++        goto cleanup;
++
++    if (virMigrationHelperResolvePath(mig, helpername) < 0)
++        goto cleanup;
++
++    mig->cmd = virCommandNewArgList(mig->binary, mig->uuid, NULL);
++    virCommandClearCaps(mig->cmd);
++
++    return mig;
++
++cleanup:
++    virMigrationHelperFree(mig);
++    return NULL;
++}
++
++int
++virMigrationHelperResolvePath(virMigrationHelperPtr mig,
++                              const char *helpername)
++{
++    const char *baseDirectory = NULL;
++    char *binaryName = NULL;
++    char *binaryPath = NULL;
++    int ret = -1;
++
++    virCheckNonNullArgReturn(mig, -1);
++
++    if (VIR_STRDUP(binaryName, helpername) < 0)
++        goto done;
++
++    baseDirectory = virMigrationHelperGetDirectory();
++
++    binaryPath = virFileBuildPath(baseDirectory, basename(binaryName), NULL);
++    if (binaryPath == NULL) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("failed to build the helper path for %s"), helpername);
++        goto done;
++    }
++
++    mig->binary = realpath(binaryPath, NULL);
++    if (mig->binary == NULL) {
++        /* path doesn't exist */
++        goto done;
++    }
++
++    if (!STRPREFIX(mig->binary, baseDirectory)) {
++        VIR_FREE(mig->binary);
++        goto done;
++    }
++
++    ret = 0;
++
++  done:
++    VIR_FREE(binaryPath);
++    VIR_FREE(binaryName);
++    return ret;
++}
++
++
++void
++virMigrationHelperFree(virMigrationHelperPtr mig)
++{
++    if (!mig)
++        return;
++    virCommandFree(mig->cmd);
++    VIR_FREE(mig->uuid);
++    VIR_FREE(mig->dconnuri);
++    VIR_FREE(mig->errbuf);
++    VIR_FREE(mig->binary);
++    VIR_FREE(mig);
++}
++
++
++int
++virMigrationHelperRun(virMigrationHelperPtr mig,
++                      const char *dconnuri,
++                      const char *helperconf)
++{
++    int status;
++    virCheckNonNullArgReturn(mig, -1);
++
++    virCommandAddArg(mig->cmd, dconnuri);
++    virCommandAddArg(mig->cmd, "-");
++
++    virCommandSetInputBuffer(mig->cmd, helperconf);
++    virCommandSetErrorBuffer(mig->cmd, &mig->errbuf);
++    if (virCommandRun(mig->cmd, &status) < 0) {
++        virReportError(VIR_ERR_INTERNAL_ERROR,
++                       _("failed to run helper %s"), mig->binary);
++        return -1;
++    }
++
++    return virMigrationHelperProcessCompletionMessage(mig, status);
++}
++
++int
++virMigrationHelperProcessCompletionMessage(virMigrationHelperPtr mig,
++                                           int status)
++{
++    // we intentionally ignore any extra data on the successfull
++    // completion message.
++    if (status == 0) {
++        return 0;
++    }
++    return processCompletionErrorMessage(mig->errbuf);
++}
++
++
 +#define CONTENT_TYPE_COMPLETION "completion"
 +#define RESULT_ERROR "error"
 +
 +static int
 +raiseErrorFromPayload(virJSONValuePtr errObj, const char *msg)
 +{
-+    const char *errorMessage;
 +    const char *errorDetails;
++    const char *errorMessage;
 +    int errorCode;
 +
 +    if (errObj == NULL) {
@@ -88,7 +405,9 @@ index d44b553c74..52c64cdfc2 100644
 +    }
 +
 +    virRaiseErrorFull(__FILE__, __FUNCTION__, __LINE__,
-+                      VIR_FROM_THIS, errorCode, VIR_ERR_ERROR,
++                      VIR_FROM_THIS,
++                      VIR_ERR_OPERATION_FAILED,
++                      VIR_ERR_ERROR,
 +                      errorMessage, /* str1 */
 +                      errorDetails, /* str2 */
 +                      NULL,         /* str3 */
@@ -141,98 +460,607 @@ index d44b553c74..52c64cdfc2 100644
 +    return rc;
 +}
 +
-+
-+/**
-+ * virDomainMigrateToURIWithHelper:
-+ * @domain: a domain object
-+ * @dconnuri: URI for target libvirtd
-+ * @hname: name of the helper to use to supervise the migration
-+ * @hconf: opaque configuration data for the helper
+diff --git a/src/util/virmigrationhelper.h b/src/util/virmigrationhelper.h
+new file mode 100644
+index 0000000000..7b682414e9
+--- /dev/null
++++ b/src/util/virmigrationhelper.h
+@@ -0,0 +1,42 @@
++/*
++ * virmigrationhelper.c: Integration with migration helper processes
 + *
-+ * Migrate the domain object from its current host to the destination host
-+ * given by URI, using the provided helper
++ * Copyright (C) 2018 Red Hat, Inc.
 + *
-+ * Returns 0 if the migration succeeded, -1 upon error.
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library.  If not, see
++ * <http://www.gnu.org/licenses/>.
++ *
 + */
-+int virDomainMigrateToURIWithHelper(virDomainPtr domain,
-+                                    const char *dconnuri,
-+                                    const char *hname,
-+                                    const char *hconf)
-+{
-+    char uuid[VIR_UUID_STRING_BUFLEN];
-+    char *binpath;
++
++#ifndef __VIR_MIGRATION_HELPER_H__
++# define __VIR_MIGRATION_HELPER_H__
++
++
++typedef struct _virMigrationHelper virMigrationHelper;
++typedef virMigrationHelper *virMigrationHelperPtr;
++
++
++virMigrationHelperPtr
++virMigrationHelperNew(const char *vmuuid,
++                      const char *helpername);
++
++void
++virMigrationHelperFree(virMigrationHelperPtr mig);
++
++int
++virMigrationHelperRun(virMigrationHelperPtr mig,
++                      const char *dconnuri,
++                      const char *helperconf);
++
++#endif /* __VIR_MIGRATION_HELPER_H__ */
+diff --git a/src/util/virmigrationhelperpriv.h b/src/util/virmigrationhelperpriv.h
+new file mode 100644
+index 0000000000..ba78c02dea
+--- /dev/null
++++ b/src/util/virmigrationhelperpriv.h
+@@ -0,0 +1,58 @@
++/*
++ * virmigrationhelperpriv.h: Functions for testing virMigrationHelper APIs
++ *
++ * Copyright (C) 2018 Red Hat, Inc.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library.  If not, see
++ * <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#ifndef __VIR_MIGRATION_HELPER_PRIV_H_ALLOW__
++# error "virmigrationhelperpriv.h may only be included by virmigrationhelper.c or test suites"
++#endif
++
++#ifndef __VIR_MIGRATION_HELPER_PRIV_H__
++# define __VIR_MIGRATION_HELPER_PRIV_H__
++
++# include "internal.h"
++# include "vircommand.h"
++
++
++struct _virMigrationHelper {
++    virCommandPtr cmd;
++    char *uuid;
++    char *dconnuri;
 +    char *binary;
 +    char *errbuf;
-+    int status;
-+    int rc = -1;
-+    virCommandPtr cmd = NULL;
++};
 +
-+    VIR_DOMAIN_DEBUG(domain, "dconnuri=%s, hname=%s, hconf=%s",
-+                     NULLSTR(dconnuri), NULLSTR(hname), NULLSTR(hconf));
++int
++virMigrationHelperSetDirectory(const char *dirname);
 +
-+    virResetLastError();
++const char *
++virMigrationHelperGetDirectory(void);
 +
-+    /* First checkout the source */
-+    virCheckDomainReturn(domain, -1);
-+    virCheckNonNullArgGoto(dconnuri, cleanup);
-+    virCheckNonNullArgGoto(hname, cleanup);
-+    virCheckNonNullArgGoto(hconf, cleanup);
-+    virCheckReadOnlyGoto(domain->conn->flags, cleanup);
++const char *
++virMigrationHelperGetFullPath(virMigrationHelperPtr mig);
 +
-+    virDomainGetUUIDString(domain, &uuid[0]);
++int
++virMigrationHelperResolvePath(virMigrationHelperPtr mig,
++                              const char *helpername);
 +
-+    binpath = virFileBuildPath(VIR_HELPER_DIR, hname, NULL);
-+    if (binpath == NULL) {
-+        virReportError(VIR_ERR_INTERNAL_ERROR,
-+                       _("failed to build the helper path for %s"), hname);
++int
++virMigrationHelperProcessCompletionMessage(virMigrationHelperPtr mig,
++                                           int status);
++
++#endif /* __VIR_MIGRATION_HELPER_PRIV_H__ */
+diff --git a/tests/Makefile.am b/tests/Makefile.am
+index 99c79e3208..54673ddf73 100644
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -194,6 +194,7 @@ test_programs = virshtest sockettest \
+ 	virkeycodetest \
+ 	virlockspacetest \
+ 	virlogtest \
++	virmigrationhelpertest \
+ 	virrotatingfiletest \
+ 	virschematest \
+ 	virstringtest \
+@@ -966,6 +967,12 @@ virkmodtest_SOURCES = \
+ 	virkmodtest.c testutils.h testutils.c
+ virkmodtest_LDADD = $(LDADDS)
+ 
++virmigrationhelpertest_SOURCES = \
++	virmigrationhelpertest.c testutils.h testutils.c
++virmigrationhelpertest_LDADD = $(LDADDS) \
++	../src/libvirt_util.la \
++	$(NULL)
++
+ vircapstest_SOURCES = \
+ 	vircapstest.c testutils.h testutils.c
+ if WITH_LXC
+diff --git a/tests/virmigrationhelperdata/response-empty.json b/tests/virmigrationhelperdata/response-empty.json
+new file mode 100644
+index 0000000000..e69de29bb2
+diff --git a/tests/virmigrationhelperdata/response-failure-incomplete-1.json b/tests/virmigrationhelperdata/response-failure-incomplete-1.json
+new file mode 100644
+index 0000000000..19b09be63f
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-failure-incomplete-1.json
+@@ -0,0 +1,11 @@
++{
++   "vmmiVersion" : "0.2.0",
++   "contentType" : "completion",
++   "timestamp" : 1528117329,
++   "completion" : {
++      "error" : {
++         "code" : 42
++      },
++      "result" : "error"
++   }
++}
+diff --git a/tests/virmigrationhelperdata/response-failure-incomplete-2.json b/tests/virmigrationhelperdata/response-failure-incomplete-2.json
+new file mode 100644
+index 0000000000..63e7ced8e0
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-failure-incomplete-2.json
+@@ -0,0 +1,8 @@
++{
++   "vmmiVersion" : "0.2.0",
++   "contentType" : "completion",
++   "timestamp" : 1528117329,
++   "completion" : {
++      "result" : "error"
++   }
++}
+diff --git a/tests/virmigrationhelperdata/response-failure-incomplete-3.json b/tests/virmigrationhelperdata/response-failure-incomplete-3.json
+new file mode 100644
+index 0000000000..63e7ced8e0
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-failure-incomplete-3.json
+@@ -0,0 +1,8 @@
++{
++   "vmmiVersion" : "0.2.0",
++   "contentType" : "completion",
++   "timestamp" : 1528117329,
++   "completion" : {
++      "result" : "error"
++   }
++}
+diff --git a/tests/virmigrationhelperdata/response-failure-malformed-1.json b/tests/virmigrationhelperdata/response-failure-malformed-1.json
+new file mode 100644
+index 0000000000..89b77ee746
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-failure-malformed-1.json
+@@ -0,0 +1,13 @@
++{
++   "vmmiVersion" : "0.2.0",
++   "contentType" : "completion",
++   "timestamp" : 1528117329,
++   "completion" : {
++      "errorReport" : {
++         "message" : "generic error",
++         "code" : 42,
++         "details" : "generic error explained in a user-friendly way"
++      },
++      "result" : "error"
++   }
++}
+diff --git a/tests/virmigrationhelperdata/response-failure.json b/tests/virmigrationhelperdata/response-failure.json
+new file mode 100644
+index 0000000000..2d9b1e1953
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-failure.json
+@@ -0,0 +1,13 @@
++{
++   "vmmiVersion" : "0.2.0",
++   "contentType" : "completion",
++   "timestamp" : 1528117329,
++   "completion" : {
++      "error" : {
++         "message" : "generic error",
++         "code" : 42,
++         "details" : "generic error explained in a user-friendly way"
++      },
++      "result" : "error"
++   }
++}
+diff --git a/tests/virmigrationhelperdata/response-success-incomplete-1.json b/tests/virmigrationhelperdata/response-success-incomplete-1.json
+new file mode 100644
+index 0000000000..281828e8eb
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-success-incomplete-1.json
+@@ -0,0 +1,8 @@
++{
++   "contentType" : "completion",
++   "completion" : {
++      "result" : "success"
++   },
++   "timestamp" : 1528117329,
++   "vmmiVersion" : "0.2.0"
++}
+diff --git a/tests/virmigrationhelperdata/response-success-incomplete-2.json b/tests/virmigrationhelperdata/response-success-incomplete-2.json
+new file mode 100644
+index 0000000000..d45046dd7f
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-success-incomplete-2.json
+@@ -0,0 +1,5 @@
++{
++   "contentType" : "completion",
++   "timestamp" : 1528117329,
++   "vmmiVersion" : "0.2.0"
++}
+diff --git a/tests/virmigrationhelperdata/response-success.json b/tests/virmigrationhelperdata/response-success.json
+new file mode 100644
+index 0000000000..924e77fc8d
+--- /dev/null
++++ b/tests/virmigrationhelperdata/response-success.json
+@@ -0,0 +1,9 @@
++{
++   "contentType" : "completion",
++   "completion" : {
++      "result" : "success",
++      "success" : {}
++   },
++   "timestamp" : 1528117329,
++   "vmmiVersion" : "0.2.0"
++}
+diff --git a/tests/virmigrationhelpertest.c b/tests/virmigrationhelpertest.c
+new file mode 100644
+index 0000000000..941966f10d
+--- /dev/null
++++ b/tests/virmigrationhelpertest.c
+@@ -0,0 +1,321 @@
++/*
++ * Copyright (C) 2018 Red Hat, Inc.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library.  If not, see
++ * <http://www.gnu.org/licenses/>.
++ */
++
++#include <config.h>
++
++#include "testutils.h"
++
++#ifdef __linux__
++
++# include <stdlib.h>
++# include "virstring.h"
++# include "virmigrationhelper.h"
++# define __VIR_MIGRATION_HELPER_PRIV_H_ALLOW__
++# include "virmigrationhelperpriv.h"
++
++# define VIR_FROM_THIS VIR_FROM_NONE
++
++
++struct testInfo {
++    const char *input;
++};
++
++static int
++testLoadResponse(virMigrationHelperPtr mig, const struct testInfo *info)
++{
++    int ret = -1;
++    char *json;
++    if (virAsprintf(&json, "%s/virmigrationhelperdata/response-%s.json", abs_srcdir,
++                    info->input) < 0)
 +        goto cleanup;
-+    }
 +
-+    binary = realpath(binpath, NULL);
-+    // TODO: re-validate realpath?
-+
-+    cmd = virCommandNewArgList(binary, uuid, dconnuri, "-", NULL);
-+    virCommandClearCaps(cmd);
-+    virCommandSetInputBuffer(cmd, hconf);
-+    virCommandSetErrorBuffer(cmd, &errbuf);
-+
-+    if (virCommandRun(cmd, &status) < 0) {
-+        virReportError(VIR_ERR_INTERNAL_ERROR,
-+                       _("failed to run helper %s"), hname);
++    if (virTestLoadFile(json, &mig->errbuf) < 0)
 +        goto cleanup;
-+    }
 +
-+    if (status == 0) {
-+        // we intentionally ignore any extra data on the successfull
-+        // completion message.
-+        rc = 0;
-+    } else {
-+        processCompletionErrorMessage(errbuf);
-+    }
++    ret = 0;
 +
 +  cleanup:
-+    virCommandFree(cmd);
-+    VIR_FREE(errbuf);
-+    VIR_FREE(binpath);
-+    VIR_FREE(binary);
-+    return rc;
++    VIR_FREE(json);
++    return ret;
 +}
 +
- /*
-  * Not for public use.  This function is part of the internal
-  * implementation of migration in the remote case.
-diff --git a/src/libvirt_public.syms b/src/libvirt_public.syms
-index 4f54b84f75..a0d5b0baf9 100644
---- a/src/libvirt_public.syms
-+++ b/src/libvirt_public.syms
-@@ -796,6 +796,7 @@ LIBVIRT_4.5.0 {
-     global:
-         virGetLastErrorCode;
-         virGetLastErrorDomain;
-+        virDomainMigrateToURIWithHelper;
- } LIBVIRT_4.4.0;
- 
- # .... define new API here using predicted next version number ....
++static int
++testGetDirectory(const void *data ATTRIBUTE_UNUSED)
++{
++    const char *dir = virMigrationHelperGetDirectory();
++    if (!dir || !dir[0])
++        return -1;
++    return 0;
++}
++
++static int
++testSetDirectory(const void *data)
++{
++    const struct testInfo *info = data;
++
++    if (virMigrationHelperSetDirectory(info->input) < 0)
++        return -1;
++
++    if (!STREQ(virMigrationHelperGetDirectory(), info->input))
++        return -1;
++
++    return 0;
++}
++
++static int
++testResolveBinaryPath(const void *data ATTRIBUTE_UNUSED)
++{
++    virMigrationHelperPtr mig = NULL;
++    int ret = -1;
++
++    if (virMigrationHelperSetDirectory("/usr/bin") < 0)
++        goto done;
++
++    /* uuid is not validated yet */
++    mig = virMigrationHelperNew("test", "true");
++    if (!mig)
++        goto done;
++
++    if (!STREQ(mig->binary, "/usr/bin/true"))
++        goto done;
++
++    ret = 0;
++
++  done:
++    virMigrationHelperFree(mig);
++    return ret;
++}
++
++static int
++testResolveBinaryPathSanitized(const void *data ATTRIBUTE_UNUSED)
++{
++    virMigrationHelperPtr mig = NULL;
++    int ret = -1;
++
++    if (virMigrationHelperSetDirectory("/test/directory") < 0)
++        goto done;
++
++    /* uuid is not validated yet */
++    mig = virMigrationHelperNew("test", "../../etc/motd");
++
++    if (mig != NULL)
++        goto done;
++
++    ret = 0;
++
++  done:
++    virMigrationHelperFree(mig);
++    return ret;
++}
++
++static int
++testResponseSuccess(const void *data)
++{
++    int ret = -1;
++    const struct testInfo *info = data;
++    struct _virMigrationHelper mig = {
++        .cmd = NULL,
++        .errbuf = NULL,
++    };
++
++    if (testLoadResponse(&mig, info) < 0)
++        goto cleanup;
++
++    if (virMigrationHelperProcessCompletionMessage(&mig, 0) < 0)
++        goto cleanup;
++
++    if (virGetLastError() != NULL)
++        goto cleanup;
++
++    ret = 0;
++
++ cleanup:
++    VIR_FREE(mig.errbuf);
++
++    return ret;
++}
++
++static int
++testResponseFailure(const void *data)
++{
++    virErrorPtr err = NULL;
++    const struct testInfo *info = data;
++    struct _virMigrationHelper mig = {
++        .cmd = NULL,
++        .errbuf = NULL,
++    };
++    int ret = -1;
++
++    if (testLoadResponse(&mig, info) < 0)
++        goto cleanup;
++
++    if (virMigrationHelperProcessCompletionMessage(&mig, 1) < 0)
++        goto cleanup;
++
++    err = virGetLastError();
++    if (!err)
++        goto cleanup;
++
++    /*
++     * we don't care about the values, save for the code, but we must
++     * have something here.
++     */
++    if (err->code != VIR_ERR_OPERATION_FAILED ||
++            err->int1 == 0 || err->str1 == NULL || err->str2 == NULL)
++        goto cleanup;
++
++    ret = 0;
++
++ cleanup:
++    VIR_FREE(mig.errbuf);
++
++    return ret;
++}
++
++static int
++testResponseFailureMalformed(const void *data)
++{
++    virErrorPtr err = NULL;
++    const struct testInfo *info = data;
++    struct _virMigrationHelper mig = {
++        .cmd = NULL,
++        .errbuf = NULL,
++    };
++    int ret = -1;
++
++    if (testLoadResponse(&mig, info) < 0)
++        goto cleanup;
++
++    if (virMigrationHelperProcessCompletionMessage(&mig, 1) == 0)
++        goto cleanup;
++
++    err = virGetLastError();
++    if (!err)
++        goto cleanup;
++
++    /*
++     * we don't care about the values, save for the code, but we must
++     * have something here.
++     */
++    if (err->code != VIR_ERR_INTERNAL_ERROR)
++        goto cleanup;
++
++    ret = 0;
++
++ cleanup:
++    VIR_FREE(mig.errbuf);
++
++    return ret;
++}
++
++static int
++testRunHelper(const void *data ATTRIBUTE_UNUSED)
++{
++    virErrorPtr err = NULL;
++    virMigrationHelperPtr mig = NULL;
++    char *json = NULL;
++    char *jsonData = NULL;
++    int ret = -1;
++
++    if (virAsprintf(&json, "%s/virmigrationhelperdata/response-failure.json",
++                    abs_srcdir) < 0)
++        goto cleanup;
++
++    if (virTestLoadFile(json, &jsonData) < 0)
++        goto cleanup;
++
++    if (virMigrationHelperSetDirectory(abs_srcdir) < 0)
++        goto cleanup;
++
++    /* uuid is not validated yet */
++    mig = virMigrationHelperNew("test", "virt-migration-helper-tester");
++    if (!mig)
++        goto cleanup;
++
++    if (virMigrationHelperRun(mig, "ignored", jsonData) < 0)
++        goto cleanup;
++
++    err = virGetLastError();
++    if (!err)
++        goto cleanup;
++
++    /*
++     * we don't care about the values, save for the code, but we must
++     * have something here.
++     */
++    if (err->code != VIR_ERR_OPERATION_FAILED ||
++            err->int1 == 0 || err->str1 == NULL || err->str2 == NULL)
++        goto cleanup;
++
++    ret = 0;
++
++  cleanup:
++    virMigrationHelperFree(mig);
++    VIR_FREE(jsonData);
++    VIR_FREE(json);
++    return ret;
++}
++
++static int
++mymain(void)
++{
++    int ret = 0;
++
++# define DO_TEST(_name, _cb, _data_name) \
++    do { \
++        struct testInfo data = { _data_name }; \
++        virResetLastError(); \
++        if (virTestRun(_name, _cb,  &data) < 0) \
++            ret = -1; \
++    } while (0)
++
++    DO_TEST("get-directory", testGetDirectory, NULL);
++    DO_TEST("set-directory", testSetDirectory, "/test/virt/directory");
++
++    DO_TEST("resolve-path", testResolveBinaryPath, NULL);
++    DO_TEST("resolve-path-sanitized", testResolveBinaryPathSanitized, NULL);
++
++    DO_TEST("response-success", testResponseSuccess, "success");
++    /*
++     * current implementation silently discards any message on success, so we
++     * can't detect malformed success responses.
++     */
++    DO_TEST("response-success-empty", testResponseSuccess, "empty");
++    DO_TEST("response-success-incomplete-1", testResponseSuccess, "success-incomplete-1");
++    DO_TEST("response-success-incomplete-2", testResponseSuccess, "success-incomplete-2");
++
++    DO_TEST("response-failure", testResponseFailure, "failure");
++    DO_TEST("response-failure-empty", testResponseFailureMalformed, "empty");
++    DO_TEST("response-failure-incomplete-1", testResponseFailureMalformed, "failure-incomplete-1");
++    DO_TEST("response-failure-incomplete-2", testResponseFailureMalformed, "failure-incomplete-2");
++    DO_TEST("response-failure-incomplete-3", testResponseFailureMalformed, "failure-incomplete-3");
++    DO_TEST("response-failure-malformed-1", testResponseFailureMalformed, "failure-malformed-1");
++
++    DO_TEST("run-success", testRunHelper, NULL);
++
++    return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
++}
++
++VIR_TEST_MAIN(mymain);
++#else
++int
++main(void)
++{
++    return EXIT_AM_SKIP;
++}
++#endif
+diff --git a/tests/virt-migration-helper-tester b/tests/virt-migration-helper-tester
+new file mode 100755
+index 0000000000..30293cb088
+--- /dev/null
++++ b/tests/virt-migration-helper-tester
+@@ -0,0 +1,5 @@
++#!/bin/sh
++
++set -e
++/bin/cat - 1>&2
++exit 1
 -- 
 2.17.1
 
