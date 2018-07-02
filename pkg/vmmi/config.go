@@ -18,16 +18,17 @@ func FindPluginConfigurationPath(args []string) string {
 }
 
 func (pc *PluginContext) ParseParameters(args []string) {
-	if len(args) < 3 {
-		details := fmt.Sprintf("expected %d arguments, received %d", 2, len(args)-1)
+	if len(args) < 4 {
+		details := fmt.Sprintf("expected at least %d arguments, received %d", 3, len(args)-1)
 		pc.CompleteWithErrorDetails(ErrorCodeMissingParameters, details)
 	}
 
 	pc.Params.VMid = args[1]
 	pc.Params.DestinationURI = args[2]
+	pc.Params.MigrationURI = args[3]
 	pc.Params.PluginConfigurationPath = FindPluginConfigurationPath(args)
-	if len(args) >= 4 {
-		pc.Params.PluginConfigurationPath = args[3]
+	if len(args) >= 5 {
+		pc.Params.PluginConfigurationPath = args[4]
 	}
 }
 
