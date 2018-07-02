@@ -40,7 +40,7 @@ func (pc *PluginContext) ParseConfiguration() {
 	} else {
 		src, err := os.Open(pc.Params.PluginConfigurationPath)
 		if err != nil {
-			pc.CompleteWithErrorValue(ErrorCodeMalformedParameters, err)
+			pc.CompleteWithErrorValue(ErrorCodeBadFilePath, err)
 		}
 		defer src.Close()
 		r = src
@@ -48,7 +48,7 @@ func (pc *PluginContext) ParseConfiguration() {
 	dec := json.NewDecoder(r)
 	err = dec.Decode(pc.Config)
 	if err != nil {
-		pc.CompleteWithErrorValue(ErrorCodeMalformedParameters, err)
+		pc.CompleteWithErrorValue(ErrorCodeMalformedConfiguration, err)
 	}
 }
 

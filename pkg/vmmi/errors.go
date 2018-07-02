@@ -12,7 +12,9 @@ const (
 	ErrorCodeNone = iota
 	ErrorCodeUnknown
 	ErrorCodeOperationFailed
+	ErrorCodeBadFilePath
 	ErrorCodeMalformedParameters
+	ErrorCodeMalformedConfiguration
 	ErrorCodeMissingParameters
 	ErrorCodeMigrationFailed
 	ErrorCodeMigrationAborted
@@ -60,8 +62,12 @@ func Strerror(code int) string {
 		return "unexpected error"
 	case ErrorCodeOperationFailed:
 		return "operation failed"
+	case ErrorCodeBadFilePath:
+		return "bad file path specification"
 	case ErrorCodeMalformedParameters:
 		return "malformed parameters"
+	case ErrorCodeMalformedConfiguration:
+		return "malformed configuration"
 	case ErrorCodeMissingParameters:
 		return "missing parameters"
 	case ErrorCodeMigrationFailed:
