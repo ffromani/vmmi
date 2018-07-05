@@ -1,0 +1,13 @@
+{
+   "configuration" : {
+      "connectionCredentials" : {
+         "username" : "vdsm@ovirt",
+         "passwordFile" : "/etc/pki/vdsm/keys/libvirt_password"
+      },
+      "logFilePath" : "/var/log/touri.log",
+      "verbose" : 0,
+      "connection" : "qemu:///system"
+   },
+   "contentType" : "configuration",
+   "vmmiVersion" : "0.3.0"
+}
