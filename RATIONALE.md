@@ -63,3 +63,10 @@ Please note that the VMMI specifications doesn't intentionally make impossible t
 or a lisp dialect) inside a VMMi compliant plugin, but it also does nothing to encourage this approach.
 The simplest possible solution is to implement each policy in a separate plugin process, to maximize isolation and to reduce the API surface.
 This is the preferred implementation of VMMI plugins.
+
+## Split of commandline arguments vs configuration message
+
+It can be argued that the configuration message/file can entirely replace the command line parameters, making them redundant.
+While this is true, I believe this makes things a little less practical, thus I believe the split has merit.
+Command line parameters carry the information which is expected to change on every migration, while the configuration message holds
+data which should change rarely, if ever.
