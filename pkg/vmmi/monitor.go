@@ -1,10 +1,13 @@
 package vmmi
 
-import "io"
+import (
+	"github.com/fromanirh/vmmi/pkg/vmmi/messages"
+	"io"
+)
 
 type Monitor interface {
 	Configure(r io.Reader) error
 	Run(resChan chan error)
 	Stop()
-	Status() (interface{}, error)
+	Status(msg *messages.Status) (interface{}, error)
 }

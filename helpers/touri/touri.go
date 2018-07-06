@@ -21,8 +21,8 @@ func (n *NOPMonitor) Run(resChan chan error) {
 func (n *NOPMonitor) Stop() {
 }
 
-func (n *NOPMonitor) Status() (interface{}, error) {
-	return nil, nil
+func (n *NOPMonitor) Status(msg *messages.Status) (interface{}, error) {
+	return msg, nil
 }
 
 type TrivialMigrator struct {

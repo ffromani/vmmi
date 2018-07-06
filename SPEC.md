@@ -1,7 +1,7 @@
 # Virtual Machine Migrator Interface Specification 
 
 ## Version
-This is VMMI spec version 0.3.0
+This is VMMI spec version 0.4.1
 
 ## Overview
 
@@ -43,7 +43,7 @@ The VMMI implementation and the management application will use independent conn
 Any exchange of data between a VMMI implementation and anything else.
 Each JSON message must have at least those keys:
 
-- "vmmiVersion" (string): version of the VMMI SPEC this message complies to. Current value must be "0.3.0"
+- "vmmiVersion" (string): version of the VMMI SPEC this message complies to. Current value must be "0.4.1"
 - "contentType" (string): describes the content of the message, e.g the not-specified, message-variable fields.
   The value of the key is not specified. Some values, however, are reserved for well-known messages. The reserved fields are
   - "configuration": for configuration info
@@ -56,7 +56,7 @@ The following fields are optional for "contentType": "configuration", and mandat
 Example message:
 ```
   {
-    "vmmiVersion": "0.3.0",
+    "vmmiVersion": "0.4.1",
     "timestamp": 1528117452,
     "contentType": "foobar",
     "foobar": {
@@ -131,7 +131,7 @@ The configuration data of each implementation must support at least the followin
 Example configuration message
 ```
   {
-    "vmmiVersion": "0.3.0",
+    "vmmiVersion": "0.4.1",
     "contentType": "configuration",
     "configuration": {
       "connection": "qemu:///system",
@@ -160,7 +160,7 @@ The content of that object is not specified. A empty object is a valid value.
 Example of succesfull termination
 ```
   {
-    "vmmiVersion": "0.3.0",
+    "vmmiVersion": "0.4.1",
     "timestamp": 1528117329,
     "contentType": "completion",
     "completion": {
@@ -179,7 +179,7 @@ must hold three more keys:
 Example of failed migration report message:
 ```
   {
-    "vmmiVersion": "0.3.0",
+    "vmmiVersion": "0.4.1",
     "timestamp": 1528117329,
     "contentType": "completion",
     "completion": {

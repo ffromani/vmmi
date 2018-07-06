@@ -71,19 +71,23 @@ func TestReportError(t *testing.T) {
 	}
 }
 
-type testStatusData struct {
+type statusData struct {
 	ProgressPercentage uint64 `json:"percentage"`
 }
 
-func TestReportStatus(t *testing.T) {
+type testStatusMessage struct {
+	Status
+	StatusData statusData `json:"status"`
+}
+
+func TestReportStatusPassthrough(t *testing.T) {
 	var W bytes.Buffer
 	var L bytes.Buffer
 	sink := Sink{
 		W: &W,
 		L: log.New(&L, "test: ", log.LstdFlags),
 	}
-	statusData := testStatusData{ProgressPercentage: 51}
-	sink.ReportStatus(&statusData)
+	sink.ReportStatus(NewStatus())
 
 	var msg Status
 	dec := json.NewDecoder(&W)
@@ -98,6 +102,39 @@ func TestReportStatus(t *testing.T) {
 	if msg.Timestamp <= 0 {
 		t.Errorf("wrong timestamp: %v", msg.Timestamp)
 	}
+}
 
-	// todo: msg.Status use interface{} to pass data
+func TestReportStatusAugmented(t *testing.T) {
+	var W bytes.Buffer
+	var L bytes.Buffer
+	sink := Sink{
+		W: &W,
+		L: log.New(&L, "test: ", log.LstdFlags),
+	}
+
+	payload := statusData{
+		ProgressPercentage: 51,
+	}
+	st := testStatusMessage{
+		Status:     *NewStatus(),
+		StatusData: payload,
+	}
+	sink.ReportStatus(st)
+
+	var msg testStatusMessage
+	dec := json.NewDecoder(&W)
+	dec.Decode(&msg)
+
+	if msg.Version != Version {
+		t.Errorf("wrong version: %v vs %v", msg.Version, Version)
+	}
+	if msg.ContentType != ContentTypeStatus {
+		t.Errorf("wrong contentType: %v vs %v", msg.ContentType, ContentTypeStatus)
+	}
+	if msg.Timestamp <= 0 {
+		t.Errorf("wrong timestamp: %v", msg.Timestamp)
+	}
+	if msg.StatusData != payload {
+		t.Errorf("wrong payload: %v vs %v", msg.StatusData, payload)
+	}
 }

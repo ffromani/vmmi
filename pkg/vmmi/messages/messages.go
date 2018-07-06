@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const Version string = "0.3.0"
+const Version string = "0.4.1"
 
 const (
 	ContentTypeConfiguration string = "configuration"
@@ -44,8 +44,7 @@ type Configuration struct {
 
 type Status struct {
 	Header
-	Timestamp int64       `json:"timestamp"`
-	Status    interface{} `json:"status"`
+	Timestamp int64 `json:"timestamp"`
 }
 
 type SuccessData struct {
@@ -123,15 +122,17 @@ func (s *Sink) ReportError(code int, message string, details string) {
 	enc.Encode(msg)
 }
 
-func (s *Sink) ReportStatus(status interface{}) {
-	msg := Status{
+func NewStatus() *Status {
+	return &Status{
 		Header: Header{
 			Version:     Version,
 			ContentType: ContentTypeStatus,
 		},
-		Status:    status,
 		Timestamp: time.Now().Unix(),
 	}
+}
+
+func (s *Sink) ReportStatus(msg interface{}) {
 	// TODO handle error
 	enc := json.NewEncoder(s.W)
 	enc.Encode(msg)

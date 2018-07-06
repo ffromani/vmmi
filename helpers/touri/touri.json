@@ -9,5 +9,5 @@
       "connection" : "qemu:///system"
    },
    "contentType" : "configuration",
-   "vmmiVersion" : "0.3.0"
+   "vmmiVersion" : "0.4.1"
 }

@@ -101,14 +101,14 @@ func (h *Helper) URIParameters() URIParameters {
 }
 
 func (h *Helper) sendStatus(mon Monitor) {
-	payload, err := mon.Status()
+	msg, err := mon.Status(messages.NewStatus())
 	if err != nil {
 		// TODO report error
 		return
 	}
 
 	sink := messages.Sink{W: os.Stdout, L: h.Log()}
-	sink.ReportStatus(payload)
+	sink.ReportStatus(msg)
 }
 
 func (h *Helper) completeWithErrorDetails(code int, details string) {
