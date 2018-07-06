@@ -69,7 +69,7 @@ func (h *Helper) readConfiguration() {
 
 func (h *Helper) parseConfiguration() {
 	dec := json.NewDecoder(h.confData)
-	err := dec.Decode(h.config)
+	err := dec.Decode(&h.config)
 	if err != nil {
 		h.completeWithErrorValue(ErrorCodeMalformedConfiguration, err)
 	}
