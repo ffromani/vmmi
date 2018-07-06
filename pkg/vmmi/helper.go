@@ -26,13 +26,23 @@ func (h *Helper) Log() *log.Logger {
 }
 
 func NewHelper(args []string) *Helper {
-	var logsink io.Writer = ioutil.Discard
-	var err error
-
-	h := Helper{}
+	h := &Helper{}
 	h.parseParameters(args)
 	h.readConfiguration()
 	h.parseConfiguration()
+	h.openLog()
+
+	h.Log().Printf("args: %#v", args)
+	h.Log().Printf("configuration: %#v", h.config)
+
+	h.connectToLibvirt()
+
+	return h
+}
+
+func (h *Helper) openLog() *Helper {
+	var logsink io.Writer = ioutil.Discard
+	var err error
 
 	if h.config.Configuration.LogFilePath != "" {
 		h.logFile, err = os.OpenFile(h.config.Configuration.LogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0640)
@@ -43,9 +53,11 @@ func NewHelper(args []string) *Helper {
 		h.completeWithErrorValue(ErrorCodeBadFilePath, err)
 	}
 	h.logHandle = log.New(logsink, "touri: ", log.LstdFlags)
+	return h
+}
 
-	h.Log().Printf("args: %#v", args)
-	h.Log().Printf("configuration: %#v", h.config)
+func (h *Helper) connectToLibvirt() *Helper {
+	var err error
 
 	h.conn, err = connect(&h.config.Configuration)
 	if err != nil {
@@ -59,7 +71,8 @@ func NewHelper(args []string) *Helper {
 		h.completeWithErrorValue(ErrorCodeVMUnknown, err)
 	}
 	h.Log().Printf("lookup succesfull")
-	return &h
+
+	return h
 }
 
 func (h *Helper) Close() error {
