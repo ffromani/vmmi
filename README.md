@@ -4,17 +4,19 @@
 
 ## What is VMMI?
 
-VMMI (_Virtual Machine Migrator Interface_) consists of a specification and libraries for writing plugins to implement
-live migration of virtual machines across hosts, along with a number of supported plugins.
-VMMI concerns itself only with the migration of the VMs, using [libvirt](http://libvirt.org) in the [managed peer to peer mode](https://libvirt.org/migration.html#flowpeer2peer).
+VMMI (_Virtual Machine Migrator Interface_) consists of a specification and libraries for writing helpers to implement
+live migration of virtual machines across hosts, along with a number of supported helpers.
+VMMI concerns itself only with the migration of the VMs, using [libvirt](http://libvirt.org).
+The preferred migration mode is the [managed peer to peer](https://libvirt.org/migration.html#flowpeer2peer).
 
 ## VMMI highlights:
 
-1. Let's implement migration policies as helper processes.
-2. The helper process own the migration - they start them, they tune its parameters at runtime.
-3. The management application can still abort or get the migration status using standard libvirt APIs.
-4. The helper process is used as "fire and forget" - the client just need to wait for completion and collect the exit status.
-5. The helper process will receive parameters and configuration at startup, no further interaction needed once it started.
+1. The migration policies are implemented as helper processes.
+2. A "migration policy" is any entity that supervises the migration process and that increases the chance of the migration succesfully complete.
+3. The helper process own the migration - they start them, they tune its parameters at runtime.
+4. The management application can still abort or get the migration status using standard libvirt APIs.
+5. The helper process is used as "fire and forget" - the client just need to wait for completion and collect the exit status.
+6. The helper process will receive parameters and configuration at startup, no further interaction needed once it started.
 
 ## Why Develop VMMI?
 
@@ -29,7 +31,7 @@ Most management applications implements live migration policies, e.g. monitor th
 to help the migration finish (converge) successfully, or abort if a timeout expired.
 A migration policy can be thought as a process monitoring the migration state and changing the migration settings according to some rules to produced a desired outcome.
 
-The purpose of VMMI is to encapsulate the migration policies in external entities -the plugins- and make them agnostic with respect to the management application, to make them interchangeable.
+The purpose of VMMI is to encapsulate the migration policies in external entities -the helpers- and make them agnostic with respect to the management application, to make them interchangeable.
 VMMI interacts with the management application using well defined interface leveraging JSON messages, and uses libvirt to actually interact with the hypervisor(s).
 
 ![VMMI architecture](https://github.com/fromanirh/vmmi/blob/master/Documentation/arch.png "VMMI architecture")
@@ -37,13 +39,13 @@ VMMI interacts with the management application using well defined interface leve
 ### Requirements
 
 The VMMI spec is language agnostic.
-The VMMI spec and the reference plugins all assume libvirt manages the VMs being migrated, and the migration occurs in managed peer to peer mode.
+The VMMI spec and the reference helpers all assume libvirt manages the VMs being migrated, and the migration occurs in managed peer to peer mode.
 
 ### Reference Plugins
 
-The VMMI project maintains a set of [reference plugins](https://github.com/fromanirh/vmmi/tree/master/helpers) that implement the VMMI specification.
+The VMMI project maintains a set of [reference helpers](https://github.com/fromanirh/vmmi/tree/master/helpers) that implement the VMMI specification.
 
-### Running the plugins
+### Running the helpers
 
 Patches to integrate VMMI in popular Virtual Machine Management applications are available for:
 
@@ -51,7 +53,7 @@ Patches to integrate VMMI in popular Virtual Machine Management applications are
 
 ## What might VMMI do in the future?
 
-The first purpose of VMMI is to test if the concept of moving the migration policy in a separate plugin out of the management application is viable or not.
+The first purpose of VMMI is to test if the concept of moving the migration policy in a separate helper out of the management application is viable or not.
 If the concept proves itself worthy, we aim to propose integration of VMMI inside libvirt
 
 ## Contact

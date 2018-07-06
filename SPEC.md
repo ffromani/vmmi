@@ -22,7 +22,7 @@ The key words "must", "must not", "required", "shall", "shall not", "should", "s
 ## General Considerations
 
 - the management application is built on top of libvirt, so it uses the [libvirt APIs](https://libvirt.org/html/index.html) to manage VMs, including migrations.
-- the VMMI migration model is limited to the [managed peer to peer model](https://libvirt.org/migration.html#flowpeer2peer) (*TODO: this may change before the spec is finalized*)
+- the preferred VMMI migration model is the [managed peer to peer model](https://libvirt.org/migration.html#flowpeer2peer), but there is no constraint enforced on the migration model.
 - the management application must set up anything the VM requires to run (e.g. shared storage) before to engage the VMMI implementations.
 - the management application is in charge to clean up the resources required by the VM to run.
 - the usage of a VMMI implementation replaces any call to the [virDomainMigrateToURI API family](https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainMigrateToURI3).
