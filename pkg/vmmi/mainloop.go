@@ -35,45 +35,51 @@ func (h *Helper) WaitForCompletion(mon Monitor, mig Migrator) {
 	start := time.Now()
 
 	h.Log().Printf("waiting")
-	select {
-	case s := <-sigs:
-		details = fmt.Sprintf("interrupted by signal %v", s)
+	done := false
+	for !done {
+		select {
+		case s := <-sigs:
+			details = fmt.Sprintf("interrupted by signal %v", s)
 
-		switch s {
-		case syscall.SIGINT, syscall.SIGSTOP:
-			mon.Stop()
-			err = h.dom.AbortJob()
-			if err != nil {
-				h.completeWithErrorValue(ErrorCodeOperationFailed, err)
+			switch s {
+			case syscall.SIGINT, syscall.SIGSTOP:
+				mon.Stop()
+				err = h.dom.AbortJob()
+				if err != nil {
+					h.completeWithErrorValue(ErrorCodeOperationFailed, err)
+				}
+				errCode = ErrorCodeMigrationAborted
+				done = true
+			case syscall.SIGTERM:
+				mon.Stop()
+				errCode = ErrorCodeNone
+				done = true
+			case syscall.SIGUSR1:
+				h.sendStatus(mon)
 			}
-			errCode = ErrorCodeMigrationAborted
-		case syscall.SIGTERM:
-			mon.Stop()
-			errCode = ErrorCodeNone
-		case syscall.SIGUSR1:
-			h.sendStatus(mon)
-		}
 
-	case err = <-migrationError:
-		mon.Stop() // ensure monitor is stopped
-		h.Log().Printf("migration stop err=%v", err)
-		if err == nil {
-			errCode = ErrorCodeNone
-			details = fmt.Sprintf("migration completed in %v", time.Now().Sub(start))
-		} else {
-			// if this is the first error we got, it comes from libvirt and not from a signal:
-			// looks like the operation failed, and wasn't aborted.
-			if errCode == ErrorCodeNone {
-				errCode = ErrorCodeMigrationFailed
-				details = fmt.Sprintf("%s", err)
+		case err = <-migrationError:
+			done = true
+			mon.Stop() // ensure monitor is stopped
+			h.Log().Printf("migration stop err=%v", err)
+			if err == nil {
+				errCode = ErrorCodeNone
+				details = fmt.Sprintf("migration completed in %v", time.Now().Sub(start))
+			} else {
+				// if this is the first error we got, it comes from libvirt and not from a signal:
+				// looks like the operation failed, and wasn't aborted.
+				if errCode == ErrorCodeNone {
+					errCode = ErrorCodeMigrationFailed
+					details = fmt.Sprintf("%s", err)
+				}
 			}
-		}
-	case err = <-monitorError:
-		// no implicit abort: it is up to the monitoring code to abort the migration if wishes so.
-		if err == nil {
-			h.Log().Printf("monitor stop")
-		} else {
-			h.Log().Printf("monitor stop err=%v", err)
+		case err = <-monitorError:
+			// no implicit abort: it is up to the monitoring code to abort the migration if wishes so.
+			if err == nil {
+				h.Log().Printf("monitor stop")
+			} else {
+				h.Log().Printf("monitor stop err=%v", err)
+			}
 		}
 	}
 	h.Log().Printf("migration stop errCode=%v", errCode)
