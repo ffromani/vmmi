@@ -1,5 +1,7 @@
 # VMMI - the Virtual Machine Migrator Interface
 
+[![GoDoc](https://godoc.org/github.com/fromanirh/vmmi/pkg/vmmi?status.svg)](https://godoc.org/github.com/fromanirh/vmmi/pkg/vmmi)
+
 ## What is VMMI?
 
 VMMI (_Virtual Machine Migrator Interface_) consists of a specification and libraries for writing plugins to implement
@@ -39,11 +41,13 @@ The VMMI spec and the reference plugins all assume libvirt manages the VMs being
 
 ### Reference Plugins
 
-The VMMI project maintains a set of [reference plugins](https://github.com/fromanirh/vmmi-plugins) that implement the VMMI specification.
+The VMMI project maintains a set of [reference plugins](https://github.com/fromanirh/vmmi/tree/master/helpers) that implement the VMMI specification.
 
 ### Running the plugins
 
-Patches to integrate VMMI in popular Virtual Machine Management applications are pending.
+Patches to integrate VMMI in popular Virtual Machine Management applications are available for:
+
+* [ovirt](https://gerrit.ovirt.org/#/q/status:open+project:vdsm+branch:master+topic:assisted-migration)
 
 ## What might VMMI do in the future?
 
