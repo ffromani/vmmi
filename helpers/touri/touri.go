@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/fromanirh/vmmi/pkg/vmmi"
+	"github.com/fromanirh/vmmi/pkg/vmmi/messages"
 	libvirt "github.com/libvirt/libvirt-go"
 	"io"
 	"os"

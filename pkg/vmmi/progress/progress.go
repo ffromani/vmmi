@@ -1,4 +1,4 @@
-package vmmi
+package progress
 
 import (
 	libvirt "github.com/libvirt/libvirt-go"
