@@ -1,0 +1,41 @@
+{
+   "contentType" : "configuration",
+   "configuration" : {
+      "connection" : "qemu:///system",
+      "logFilePath" : "/tmp/withschedule.log",
+      "connectionCredentials" : {
+         "passwordFile" : "/etc/pki/vdsm/keys/libvirt_password",
+         "username" : "vdsm@ovirt"
+      },
+      "schedule" : {
+         "init" : [
+            {
+               "params" : [
+                  "100"
+               ],
+               "name" : "setDowntime"
+            }
+         ],
+         "stalling" : [
+            {
+               "action" : {
+                  "name" : "setDowntime",
+                  "params" : [
+                     "150"
+                  ]
+               },
+               "limit" : 1
+            },
+            {
+               "action" : {
+                  "name" : "abort",
+                  "params" : []
+               },
+               "limit" : -1
+            }
+         ]
+      },
+      "verbose" : 0
+   },
+   "vmmiVersion" : "0.4.1"
+}
