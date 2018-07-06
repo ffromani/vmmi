@@ -34,7 +34,7 @@ A migration policy can be thought as a process monitoring the migration state an
 The purpose of VMMI is to encapsulate the migration policies in external entities -the helpers- and make them agnostic with respect to the management application, to make them interchangeable.
 VMMI interacts with the management application using well defined interface leveraging JSON messages, and uses libvirt to actually interact with the hypervisor(s).
 
-![VMMI architecture](https://github.com/fromanirh/vmmi/blob/master/Documentation/arch.png "VMMI architecture")
+![VMMI architecture](https://github.com/fromanirh/vmmi/blob/master/docs/arch.png "VMMI architecture")
 
 ### Requirements
 
