@@ -92,11 +92,11 @@ func (h *Helper) Close() error {
 	return nil
 }
 
-func (h *Helper) GetDomain() *libvirt.Domain {
+func (h *Helper) Domain() *libvirt.Domain {
 	return h.dom
 }
 
-func (h *Helper) GetURIParameters() URIParameters {
+func (h *Helper) URIParameters() URIParameters {
 	return h.params.URI
 }
 

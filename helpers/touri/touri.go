@@ -43,9 +43,9 @@ func (tm *TrivialMigrator) Run(resChan chan error) {
 func main() {
 	h := vmmi.NewHelper(os.Args)
 	mon := NOPMonitor{}
-	uris := h.GetURIParameters()
+	uris := h.URIParameters()
 	mig := TrivialMigrator{
-		Domain:         h.GetDomain(),
+		Domain:         h.Domain(),
 		DestinationURI: uris.Destination,
 		MigrationURI:   uris.Migration,
 	}
