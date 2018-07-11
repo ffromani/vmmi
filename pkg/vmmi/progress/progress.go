@@ -8,6 +8,7 @@ type Progress struct {
 	Valid      bool   `json:"valid"`
 	Percentage uint64 `json:"percentage"`
 	Iteration  uint64 `json:"iteration"`
+	info       *libvirt.DomainJobInfo
 }
 
 // no error yet - no place to report atm
@@ -19,15 +20,22 @@ func NewProgress(dom *libvirt.Domain) *Progress {
 		return ret
 	}
 
-	if !IsOngoing(info) {
+	ret.info = info
+	if !IsOngoing(ret) {
 		return ret
 	}
 
 	return ret.FromDomainJobInfo(info)
 }
 
+func (p *Progress) JobInfo() *libvirt.DomainJobInfo {
+	return p.info
+}
+
 // no error yet - no place to report atm
 func (p *Progress) FromDomainJobInfo(info *libvirt.DomainJobInfo) *Progress {
+	p.info = info
+
 	if info.MemIterationSet {
 		p.Valid = true
 		p.Iteration = info.MemIteration
@@ -50,6 +58,6 @@ func (p *Progress) FromDomainJobInfo(info *libvirt.DomainJobInfo) *Progress {
 	return p
 }
 
-func IsOngoing(info *libvirt.DomainJobInfo) bool {
-	return info != nil && info.OperationSet && info.Operation == libvirt.DOMAIN_JOB_OPERATION_MIGRATION_OUT
+func IsOngoing(p *Progress) bool {
+	return p != nil && p.info != nil && p.info.OperationSet && p.info.Operation == libvirt.DOMAIN_JOB_OPERATION_MIGRATION_OUT
 }

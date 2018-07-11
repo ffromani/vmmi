@@ -1,6 +1,7 @@
 {
    "contentType" : "configuration",
    "configuration" : {
+   "monitorInterval": 10,
       "schedule" : {
          "init" : [
             {
