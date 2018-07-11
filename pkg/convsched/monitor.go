@@ -21,7 +21,7 @@ type SchedulingMonitor struct {
 	DestinationURI string
 	Domain         *libvirt.Domain
 	Log            *log.Logger
-	sched          *ConvergenceSchedule
+	schedule       *ConvergenceSchedule
 	interval       time.Duration
 	stopped        chan bool
 }
@@ -30,45 +30,60 @@ func (mon *SchedulingMonitor) Configure(r io.Reader) error {
 	mon.stopped = make(chan bool, 1) // TODO move into Run() ?
 	conf, err := LoadConfiguration(r)
 	if err == nil {
-		mon.sched = &conf.Schedule
+		mon.schedule = &conf.Schedule
 		mon.interval = conf.MonitorInterval
 	}
 	return err
 }
 
+func (mon *SchedulingMonitor) Stop() {
+	mon.stopped <- true
+}
+
+func (mon *SchedulingMonitor) Status(msg *messages.Status) (interface{}, error) {
+	return msg, nil
+}
+
+func (mon *SchedulingMonitor) ScheduleHasPostcopy() bool {
+	return mon.schedule.HasPostcopy()
+}
+
+func (mon *SchedulingMonitor) Run(resChan chan error) {
+	err := mon.executeInit()
+	if err == nil {
+		err = mon.runLoop()
+	}
+	resChan <- err
+}
+
 type monitorInfo struct {
-	prog              *progress.Progress
-	now               time.Time
 	postCopyPhase     int
 	lowMark           int64
 	lastDataRemaining int64
 	iterationCount    int64
 }
 
-func (mon *SchedulingMonitor) Run(resChan chan error) {
+func (mon *SchedulingMonitor) runLoop() error {
 	var err error
 	monInfo := monitorInfo{
 		postCopyPhase:     PostCopyPhaseNone,
 		lowMark:           -1,
 		lastDataRemaining: -1,
 	}
-
-	mon.executeInit()
-
 	ticker := time.NewTicker(mon.interval * time.Second)
 	stopped := false
 	for !stopped {
 		select {
 		case stopped = <-mon.stopped:
 			// nothing to do there
-		case monInfo.now = <-ticker.C:
+		case <-ticker.C:
 			err = mon.runStep(&monInfo)
 			if err != nil {
 				stopped = true
 			}
 		}
 	}
-	resChan <- err
+	return err
 }
 
 func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo) error {
@@ -97,12 +112,11 @@ func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo) error {
 	}
 
 	if monInfo.postCopyPhase == PostCopyPhaseNone && monInfo.lastDataRemaining != -1 && monInfo.lastDataRemaining < dataRemaining {
-		monInfo.iterationCount += 1
+		monInfo.iterationCount++
 		mon.Log.Printf("New iteration detected: %v", monInfo.iterationCount)
 		mon.executeActionForIteration(monInfo.iterationCount)
 	}
 
-	monInfo.prog = prog
 	monInfo.lastDataRemaining = int64(info.DataRemaining)
 	mon.Log.Printf("progress: %v", prog)
 	return nil
@@ -110,7 +124,7 @@ func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo) error {
 
 func (mon *SchedulingMonitor) executeInit() error {
 	var err error
-	for _, action := range mon.sched.Init {
+	for _, action := range mon.schedule.Init {
 		err = mon.executeAction(action)
 		if err != nil {
 			return err
@@ -119,15 +133,15 @@ func (mon *SchedulingMonitor) executeInit() error {
 	return err
 }
 
-func (mon *SchedulingMonitor) executeActionForIteration(stalling int64) error {
+func (mon *SchedulingMonitor) executeActionForIteration(currentIteration int64) error {
 	var err error
-	head := mon.sched.Stalling[0]
+	head := mon.schedule.Stalling[0]
 
-	mon.Log.Printf("Stalling for %v iterations, checking to make next action: %v", mon.sched.Stalling, head)
-	if head.Limit < stalling {
+	mon.Log.Printf("Stalling for %v iterations, checking to make next action: %v", currentIteration, head)
+	if head.Limit < currentIteration {
 		err = mon.executeAction(head.Action)
-		mon.sched.Stalling = mon.sched.Stalling[1:]
-		mon.Log.Printf("setting conv schedule to: %v", mon.sched.Stalling)
+		mon.schedule.Stalling = mon.schedule.Stalling[1:]
+		mon.Log.Printf("setting convergence schedule to: %v", mon.schedule.Stalling)
 	}
 	return err
 }
@@ -140,27 +154,15 @@ func (mon *SchedulingMonitor) executeAction(action ConvergenceAction) error {
 		if err != nil {
 			return err
 		}
-		mon.Log.Printf("Setting downtime to %v", downtime)
+		mon.Log.Printf("action: setting downtime to %v", downtime)
 		err = mon.Domain.MigrateSetMaxDowntime(uint64(downtime), 0)
 	case ActionEnablePostCopy:
-		mon.Log.Printf("Switching to post copy")
+		mon.Log.Printf("action: switching to post copy")
 		err = mon.Domain.MigrateStartPostCopy(0)
 	case ActionAbort:
-		mon.Log.Printf("Aborting migration")
+		mon.Log.Printf("action: aborting migration")
 		err = mon.Domain.AbortJob()
 		mon.Stop()
 	}
 	return err
-}
-
-func (mon *SchedulingMonitor) Stop() {
-	mon.stopped <- true
-}
-
-func (mon *SchedulingMonitor) Status(msg *messages.Status) (interface{}, error) {
-	return msg, nil
-}
-
-func (mon *SchedulingMonitor) ScheduleHasPostcopy() bool {
-	return mon.sched.HasPostcopy()
 }
