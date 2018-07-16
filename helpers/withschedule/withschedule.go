@@ -36,9 +36,9 @@ func main() {
 		Log:            h.Log(),
 	}
 	mig := SchedulingMigrator{
+		Domain:         h.Domain(),
 		DestinationURI: uris.Destination,
 		MigrationURI:   uris.Migration,
-		Domain:         h.Domain(),
 		monitor:        &mon,
 	}
 	h.WaitForCompletion(&mon, &mig)

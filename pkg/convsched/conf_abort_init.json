@@ -1,0 +1,24 @@
+{
+   "contentType" : "configuration",
+   "configuration" : {
+   "monitorInterval": 1,
+      "schedule" : {
+         "init" : [
+            {
+               "params" : [],
+               "name" : "abort"
+            }
+         ],
+         "stalling" : [
+            {
+               "action" : {
+                  "name" : "abort",
+                  "params" : []
+               },
+               "limit" : -1
+            }
+	]
+      },
+      "verbose" : 0
+   }
+}

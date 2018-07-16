@@ -2,7 +2,9 @@ package convsched
 
 import (
 	"encoding/json"
+	"github.com/fromanirh/vmmi/pkg/vmmi/progress"
 	"io"
+	"strconv"
 	"time"
 )
 
@@ -15,6 +17,30 @@ const (
 type ConvergenceAction struct {
 	Name   string   `json:"name"`
 	Params []string `json:"params"`
+}
+
+type VMMigrator interface {
+	SetDowntime(value int) error
+	StartPostCopy() error
+	Abort() error
+	Progress() *progress.Progress
+}
+
+func (action *ConvergenceAction) Exec(mig VMMigrator) error {
+	var err error
+	switch action.Name {
+	case ActionSetDowntime:
+		downtime, err := strconv.Atoi(action.Params[0])
+		if err == nil {
+			return err
+		}
+		err = mig.SetDowntime(downtime)
+	case ActionEnablePostCopy:
+		err = mig.StartPostCopy()
+	case ActionAbort:
+		err = mig.Abort()
+	}
+	return err
 }
 
 type ConvergenceItem struct {
@@ -34,6 +60,16 @@ func (cs *ConvergenceSchedule) HasPostcopy() bool {
 		}
 	}
 	return false
+}
+
+func (cs *ConvergenceSchedule) PopAction(iteration int64) *ConvergenceAction {
+	var ret *ConvergenceAction
+	if cs.Stalling[0].Limit < iteration {
+		ret = &cs.Stalling[0].Action
+		cs.Stalling = cs.Stalling[1:]
+	}
+	return ret
+
 }
 
 func Load(r io.Reader) (*ConvergenceSchedule, error) {

@@ -6,7 +6,6 @@ import (
 	libvirt "github.com/libvirt/libvirt-go"
 	"io"
 	"log"
-	"strconv"
 	"time"
 )
 
@@ -24,6 +23,32 @@ type SchedulingMonitor struct {
 	schedule       *ConvergenceSchedule
 	interval       time.Duration
 	stopped        chan bool
+}
+
+type domainMigrator struct {
+	mon *SchedulingMonitor
+}
+
+func (d *domainMigrator) Progress() *progress.Progress {
+	return progress.NewProgress(d.mon.Domain)
+}
+
+func (d *domainMigrator) SetDowntime(value int) error {
+	// TODO: downtime must be >= 0
+	d.mon.Log.Printf("action: setting downtime to %v", value)
+	return d.mon.Domain.MigrateSetMaxDowntime(uint64(value), 0)
+}
+
+func (d *domainMigrator) StartPostCopy() error {
+	d.mon.Log.Printf("action: switching to post copy")
+	return d.mon.Domain.MigrateStartPostCopy(0)
+}
+
+func (d *domainMigrator) Abort() error {
+	d.mon.Log.Printf("action: aborting migration")
+	err := d.mon.Domain.AbortJob()
+	d.mon.Stop()
+	return err
 }
 
 func (mon *SchedulingMonitor) Configure(r io.Reader) error {
@@ -49,9 +74,10 @@ func (mon *SchedulingMonitor) ScheduleHasPostcopy() bool {
 }
 
 func (mon *SchedulingMonitor) Run(resChan chan error) {
-	err := mon.executeInit()
+	mig := &domainMigrator{mon: mon}
+	err := mon.executeInit(mig)
 	if err == nil {
-		err = mon.runLoop()
+		err = mon.runLoop(mig)
 	}
 	resChan <- err
 }
@@ -61,9 +87,10 @@ type monitorInfo struct {
 	lowMark           int64
 	lastDataRemaining int64
 	iterationCount    int64
+	step              uint64
 }
 
-func (mon *SchedulingMonitor) runLoop() error {
+func (mon *SchedulingMonitor) runLoop(mig VMMigrator) error {
 	var err error
 	monInfo := monitorInfo{
 		postCopyPhase:     PostCopyPhaseNone,
@@ -77,36 +104,36 @@ func (mon *SchedulingMonitor) runLoop() error {
 		case stopped = <-mon.stopped:
 			// nothing to do there
 		case <-ticker.C:
-			err = mon.runStep(&monInfo)
+			err = mon.runStep(&monInfo, mig)
 			if err != nil {
 				stopped = true
 			}
+			monInfo.step++
 		}
 	}
 	return err
 }
 
-func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo) error {
-	prog := progress.NewProgress(mon.Domain)
+func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo, mig VMMigrator) error {
+	var err error
+	prog := mig.Progress()
 	if prog == nil {
 		// not ready yet; not critical, let's try again later
-		return nil
+		return err
 	}
-	info := prog.JobInfo()
-	if info == nil {
-		return nil
-	}
-	dataRemaining := int64(info.DataRemaining)
+	dataRemaining := prog.DataRemaining()
+
+	mon.Log.Printf("step %#v with data remaining %v", monInfo, dataRemaining)
 
 	if monInfo.postCopyPhase != PostCopyPhaseNone {
 		if monInfo.postCopyPhase == PostCopyPhaseRunning {
-			mon.Log.Printf("Post-copy migration still in progress: %d", info.DataRemaining)
+			mon.Log.Printf("Post-copy migration still in progress: %v", dataRemaining)
 		}
 	} else if monInfo.lowMark == -1 || monInfo.lowMark > dataRemaining {
 		monInfo.lowMark = dataRemaining
 	} else {
 		mon.Log.Printf("Migration stalling: remaining (%vMiB) > lowmark (%vMiB).",
-			info.DataRemaining/1024./1024.,
+			dataRemaining/1024./1024.,
 			monInfo.lowMark/1024./1024.)
 
 	}
@@ -114,55 +141,26 @@ func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo) error {
 	if monInfo.postCopyPhase == PostCopyPhaseNone && monInfo.lastDataRemaining != -1 && monInfo.lastDataRemaining < dataRemaining {
 		monInfo.iterationCount++
 		mon.Log.Printf("New iteration detected: %v", monInfo.iterationCount)
-		mon.executeActionForIteration(monInfo.iterationCount)
+
+		action := mon.schedule.PopAction(monInfo.iterationCount)
+		if action != nil {
+			mon.Log.Printf("applying convergence action %v", action)
+			err = action.Exec(mig)
+			mon.Log.Printf("remaining convergence schedule %v", mon.schedule.Stalling)
+		}
 	}
 
-	monInfo.lastDataRemaining = int64(info.DataRemaining)
-	mon.Log.Printf("progress: %v", prog)
-	return nil
+	monInfo.lastDataRemaining = dataRemaining
+	return err
 }
 
-func (mon *SchedulingMonitor) executeInit() error {
+func (mon *SchedulingMonitor) executeInit(mig VMMigrator) error {
 	var err error
 	for _, action := range mon.schedule.Init {
-		err = mon.executeAction(action)
+		err = action.Exec(mig)
 		if err != nil {
 			return err
 		}
-	}
-	return err
-}
-
-func (mon *SchedulingMonitor) executeActionForIteration(currentIteration int64) error {
-	var err error
-	head := mon.schedule.Stalling[0]
-
-	mon.Log.Printf("Stalling for %v iterations, checking to make next action: %v", currentIteration, head)
-	if head.Limit < currentIteration {
-		err = mon.executeAction(head.Action)
-		mon.schedule.Stalling = mon.schedule.Stalling[1:]
-		mon.Log.Printf("setting convergence schedule to: %v", mon.schedule.Stalling)
-	}
-	return err
-}
-
-func (mon *SchedulingMonitor) executeAction(action ConvergenceAction) error {
-	var err error
-	switch action.Name {
-	case ActionSetDowntime:
-		downtime, err := strconv.Atoi(action.Params[0])
-		if err != nil {
-			return err
-		}
-		mon.Log.Printf("action: setting downtime to %v", downtime)
-		err = mon.Domain.MigrateSetMaxDowntime(uint64(downtime), 0)
-	case ActionEnablePostCopy:
-		mon.Log.Printf("action: switching to post copy")
-		err = mon.Domain.MigrateStartPostCopy(0)
-	case ActionAbort:
-		mon.Log.Printf("action: aborting migration")
-		err = mon.Domain.AbortJob()
-		mon.Stop()
 	}
 	return err
 }

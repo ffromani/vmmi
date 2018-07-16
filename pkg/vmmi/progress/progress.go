@@ -5,10 +5,11 @@ import (
 )
 
 type Progress struct {
-	Valid      bool   `json:"valid"`
-	Percentage uint64 `json:"percentage"`
-	Iteration  uint64 `json:"iteration"`
-	info       *libvirt.DomainJobInfo
+	Valid             bool   `json:"valid"`
+	Percentage        uint64 `json:"percentage"`
+	Iteration         uint64 `json:"iteration"`
+	UserDataRemaining int64  // TODO testing helper
+	info              *libvirt.DomainJobInfo
 }
 
 // no error yet - no place to report atm
@@ -30,7 +31,7 @@ func NewProgress(dom *libvirt.Domain) *Progress {
 
 func (p *Progress) DataRemaining() int64 {
 	if p.info == nil {
-		return 0
+		return p.UserDataRemaining
 	}
 	return int64(p.info.DataRemaining)
 }
