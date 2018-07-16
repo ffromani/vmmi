@@ -28,8 +28,11 @@ func NewProgress(dom *libvirt.Domain) *Progress {
 	return ret.FromDomainJobInfo(info)
 }
 
-func (p *Progress) JobInfo() *libvirt.DomainJobInfo {
-	return p.info
+func (p *Progress) DataRemaining() int64 {
+	if p.info == nil {
+		return 0
+	}
+	return int64(p.info.DataRemaining)
 }
 
 // no error yet - no place to report atm

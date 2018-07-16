@@ -1,0 +1,35 @@
+{
+   "contentType" : "configuration",
+   "configuration" : {
+   "monitorInterval": 10,
+      "schedule" : {
+         "init" : [
+            {
+               "params" : [
+                  "100"
+               ],
+               "name" : "setDowntime"
+            }
+         ],
+         "stalling" : [
+            {
+               "action" : {
+                  "name" : "setDowntime",
+                  "params" : [
+                     "150"
+                  ]
+               },
+               "limit" : 1
+            },
+            {
+               "action" : {
+                  "name" : "abort",
+                  "params" : []
+               },
+               "limit" : -1
+            }
+         ]
+      },
+      "verbose" : 0
+   }
+}

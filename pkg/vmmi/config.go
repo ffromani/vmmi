@@ -34,6 +34,7 @@ func (h *Helper) parseParameters(args []string) {
 	if len(args) < 4 {
 		details := fmt.Sprintf("expected at least %d arguments, received %d", 3, len(args)-1)
 		h.completeWithErrorDetails(ErrorCodeMissingParameters, details)
+		return // TODO: testing helper
 	}
 
 	h.params.VMid = args[1]
@@ -54,6 +55,7 @@ func (h *Helper) readConfiguration() {
 		src, err := os.Open(h.params.PluginConfigurationPath)
 		if err != nil {
 			h.completeWithErrorValue(ErrorCodeBadFilePath, err)
+			return // TODO: testing helper
 		}
 		defer src.Close()
 		r = src
@@ -62,6 +64,7 @@ func (h *Helper) readConfiguration() {
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
 		h.completeWithErrorValue(ErrorCodeMalformedConfiguration, err)
+		return // TODO: testing helper
 	}
 
 	h.confData = strings.NewReader(string(data))
@@ -72,6 +75,7 @@ func (h *Helper) parseConfiguration() {
 	err := dec.Decode(&h.config)
 	if err != nil {
 		h.completeWithErrorValue(ErrorCodeMalformedConfiguration, err)
+		return // TODO: testing helper
 	}
 	// reset for next use
 	h.confData.Seek(0, io.SeekStart)

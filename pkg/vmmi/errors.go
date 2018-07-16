@@ -14,6 +14,7 @@ const (
 	ErrorCodeVMUnknown
 	ErrorCodeVMDisappeared
 	ErrorCodeLibvirtDisconnected
+	ErrorCodeLast // this MUST be the last one!
 )
 
 func Strerror(code int) string {

@@ -12,6 +12,9 @@ import (
 )
 
 type Helper struct {
+	exitFunc  func(code int)
+	outsink   io.Writer
+	errsink   io.Writer
 	logFile   *os.File
 	logHandle *log.Logger
 	confData  *strings.Reader
@@ -25,8 +28,17 @@ func (h *Helper) Log() *log.Logger {
 	return h.logHandle
 }
 
+func newHelper() *Helper {
+	h := &Helper{
+		exitFunc: os.Exit,
+		outsink:  os.Stdout,
+		errsink:  os.Stderr,
+	}
+	return h
+}
+
 func NewHelper(args []string) *Helper {
-	h := &Helper{}
+	h := newHelper()
 	h.parseParameters(args)
 	h.readConfiguration()
 	h.parseConfiguration()
@@ -107,14 +119,14 @@ func (h *Helper) sendStatus(mon Monitor) {
 		return
 	}
 
-	sink := messages.Sink{W: os.Stdout, L: h.Log()}
+	sink := messages.Sink{W: h.outsink, L: h.Log()}
 	sink.ReportStatus(msg)
 }
 
 func (h *Helper) completeWithErrorDetails(code int, details string) {
-	sink := messages.Sink{W: os.Stderr, L: h.Log()}
+	sink := messages.Sink{W: h.errsink, L: h.Log()}
 	sink.ReportError(code, Strerror(code), details)
-	os.Exit(1)
+	h.exitFunc(1)
 }
 
 func (h *Helper) completeWithErrorValue(code int, err error) {
@@ -123,7 +135,7 @@ func (h *Helper) completeWithErrorValue(code int, err error) {
 }
 
 func (h *Helper) completeWithSuccess() {
-	sink := messages.Sink{W: os.Stderr, L: h.Log()}
+	sink := messages.Sink{W: h.errsink, L: h.Log()}
 	sink.ReportSuccess()
-	os.Exit(0)
+	h.exitFunc(0)
 }
