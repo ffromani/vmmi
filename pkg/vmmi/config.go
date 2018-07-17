@@ -2,6 +2,7 @@ package vmmi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -32,8 +33,8 @@ func findPluginConfigurationPath(args []string) string {
 
 func (h *Helper) parseParameters(args []string) {
 	if len(args) < 4 {
-		details := fmt.Sprintf("expected at least %d arguments, received %d", 3, len(args)-1)
-		h.completeWithErrorDetails(ErrorCodeMissingParameters, details)
+		err := errors.New(fmt.Sprintf("expected at least %d arguments, received %d", 3, len(args)-1))
+		h.Exit(ErrorCodeMissingParameters, err)
 		return // TODO: testing helper
 	}
 
@@ -54,7 +55,7 @@ func (h *Helper) readConfiguration() {
 	} else {
 		src, err := os.Open(h.params.PluginConfigurationPath)
 		if err != nil {
-			h.completeWithErrorValue(ErrorCodeBadFilePath, err)
+			h.Exit(ErrorCodeBadFilePath, err)
 			return // TODO: testing helper
 		}
 		defer src.Close()
@@ -63,7 +64,7 @@ func (h *Helper) readConfiguration() {
 
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
-		h.completeWithErrorValue(ErrorCodeMalformedConfiguration, err)
+		h.Exit(ErrorCodeMalformedConfiguration, err)
 		return // TODO: testing helper
 	}
 
@@ -74,7 +75,7 @@ func (h *Helper) parseConfiguration() {
 	dec := json.NewDecoder(h.confData)
 	err := dec.Decode(&h.config)
 	if err != nil {
-		h.completeWithErrorValue(ErrorCodeMalformedConfiguration, err)
+		h.Exit(ErrorCodeMalformedConfiguration, err)
 		return // TODO: testing helper
 	}
 	// reset for next use

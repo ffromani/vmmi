@@ -62,7 +62,7 @@ func (h *Helper) openLog() *Helper {
 	}
 
 	if err != nil {
-		h.completeWithErrorValue(ErrorCodeBadFilePath, err)
+		h.Exit(ErrorCodeBadFilePath, err)
 	}
 	h.logHandle = log.New(logsink, "touri: ", log.LstdFlags)
 	return h
@@ -73,14 +73,14 @@ func (h *Helper) connectToLibvirt() *Helper {
 
 	h.conn, err = connect(&h.config.Configuration)
 	if err != nil {
-		h.completeWithErrorValue(ErrorCodeLibvirtDisconnected, err)
+		h.Exit(ErrorCodeLibvirtDisconnected, err)
 	}
 
 	h.Log().Printf("connected")
 
 	h.dom, err = h.conn.LookupDomainByUUIDString(h.params.VMid)
 	if err != nil {
-		h.completeWithErrorValue(ErrorCodeVMUnknown, err)
+		h.Exit(ErrorCodeVMUnknown, err)
 	}
 	h.Log().Printf("lookup succesfull")
 
@@ -123,19 +123,12 @@ func (h *Helper) sendStatus(mon Monitor) {
 	sink.ReportStatus(msg)
 }
 
-func (h *Helper) completeWithErrorDetails(code int, details string) {
+func (h *Helper) Exit(code int, err ...error) {
 	sink := messages.Sink{W: h.errsink, L: h.Log()}
-	sink.ReportError(code, Strerror(code), details)
-	h.exitFunc(1)
-}
-
-func (h *Helper) completeWithErrorValue(code int, err error) {
-	details := fmt.Sprintf("%s", err)
-	h.completeWithErrorDetails(code, details)
-}
-
-func (h *Helper) completeWithSuccess() {
-	sink := messages.Sink{W: h.errsink, L: h.Log()}
-	sink.ReportSuccess()
-	h.exitFunc(0)
+	if code == ErrorCodeNone {
+		sink.ReportSuccess()
+		h.ExitFunc(0)
+	}
+	sink.ReportError(code, Strerror(code), fmt.Sprintf("%s", err[0]))
+	h.ExitFunc(1)
 }

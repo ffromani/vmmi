@@ -1,6 +1,7 @@
 package vmmi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,7 +15,7 @@ func (h *Helper) WaitForCompletion(mon Monitor, mig Migrator) {
 
 	err = mon.Configure(h.confData)
 	if err != nil {
-		h.completeWithErrorValue(ErrorCodeConfigurationFailed, err)
+		h.Exit(ErrorCodeConfigurationFailed, err)
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -31,7 +32,6 @@ func (h *Helper) WaitForCompletion(mon Monitor, mig Migrator) {
 	h.Log().Printf("monitor started")
 
 	errCode := ErrorCodeNone
-	details := ""
 	start := time.Now()
 
 	h.Log().Printf("waiting")
@@ -39,14 +39,14 @@ func (h *Helper) WaitForCompletion(mon Monitor, mig Migrator) {
 	for !done {
 		select {
 		case s := <-sigs:
-			details = fmt.Sprintf("interrupted by signal %v", s)
+			err := errors.New(fmt.Sprintf("interrupted by signal %v", s))
 
 			switch s {
 			case syscall.SIGINT, syscall.SIGSTOP:
 				mon.Stop()
 				err = h.dom.AbortJob()
 				if err != nil {
-					h.completeWithErrorValue(ErrorCodeOperationFailed, err)
+					h.Exit(ErrorCodeOperationFailed, err)
 				}
 				errCode = ErrorCodeMigrationAborted
 				done = true
@@ -64,13 +64,12 @@ func (h *Helper) WaitForCompletion(mon Monitor, mig Migrator) {
 			h.Log().Printf("migration stop err=%v", err)
 			if err == nil {
 				errCode = ErrorCodeNone
-				details = fmt.Sprintf("migration completed in %v", time.Now().Sub(start))
+				h.Log().Printf("migration completed in %v", time.Now().Sub(start))
 			} else {
 				// if this is the first error we got, it comes from libvirt and not from a signal:
 				// looks like the operation failed, and wasn't aborted.
 				if errCode == ErrorCodeNone {
 					errCode = ErrorCodeMigrationFailed
-					details = fmt.Sprintf("%s", err)
 				}
 			}
 		case err = <-monitorError:
@@ -84,8 +83,5 @@ func (h *Helper) WaitForCompletion(mon Monitor, mig Migrator) {
 	}
 	h.Log().Printf("migration stop errCode=%v", errCode)
 
-	if errCode != ErrorCodeNone {
-		h.completeWithErrorDetails(errCode, details)
-	}
-	h.completeWithSuccess()
+	h.Exit(errCode, err)
 }
