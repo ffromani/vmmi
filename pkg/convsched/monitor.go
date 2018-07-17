@@ -140,13 +140,12 @@ func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo, mig VMMigrator) erro
 
 	if monInfo.postCopyPhase == PostCopyPhaseNone && monInfo.lastDataRemaining != -1 && monInfo.lastDataRemaining < dataRemaining {
 		monInfo.iterationCount++
-		mon.Log.Printf("New iteration detected: %v", monInfo.iterationCount)
+		mon.Log.Printf("New iteration detected: %v, remaining convergence schedule %v", monInfo.iterationCount, mon.schedule)
 
 		action := mon.schedule.PopAction(monInfo.iterationCount)
 		if action != nil {
-			mon.Log.Printf("applying convergence action %v", action)
+			mon.Log.Printf("loop: applying convergence action '%v'", action)
 			err = action.Exec(mig)
-			mon.Log.Printf("remaining convergence schedule %v", mon.schedule.Stalling)
 		}
 	}
 
@@ -157,6 +156,7 @@ func (mon *SchedulingMonitor) runStep(monInfo *monitorInfo, mig VMMigrator) erro
 func (mon *SchedulingMonitor) executeInit(mig VMMigrator) error {
 	var err error
 	for _, action := range mon.schedule.Init {
+		mon.Log.Printf("init: applying convergence action '%v'", action)
 		err = action.Exec(mig)
 		if err != nil {
 			return err

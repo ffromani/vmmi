@@ -2,9 +2,12 @@ package convsched
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/fromanirh/vmmi/pkg/vmmi/progress"
+	"github.com/fromanirh/vmmi/pkg/xstrings"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,6 +20,10 @@ const (
 type ConvergenceAction struct {
 	Name   string   `json:"name"`
 	Params []string `json:"params"`
+}
+
+func (action ConvergenceAction) String() string {
+	return fmt.Sprintf("%s(%s)", action.Name, strings.Join(action.Params, ", "))
 }
 
 type VMMigrator interface {
@@ -48,9 +55,17 @@ type ConvergenceItem struct {
 	Limit  int64             `json:"limit"`
 }
 
+func (item ConvergenceItem) String() string {
+	return fmt.Sprintf("%s@%d", item.Action, item.Limit)
+}
+
 type ConvergenceSchedule struct {
 	Init     []ConvergenceAction `json:"init"`
 	Stalling []ConvergenceItem   `json:"stalling"`
+}
+
+func (sched ConvergenceSchedule) String() string {
+	return fmt.Sprintf("{ init=%v stalling=%v }", xstrings.Join(sched.Init), xstrings.Join(sched.Stalling))
 }
 
 func (cs *ConvergenceSchedule) HasPostcopy() bool {
