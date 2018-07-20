@@ -66,6 +66,12 @@ Example message:
   }
 ```
 
+#### Versioning
+
+Until the VMMI spec is declared stable, there is no the backward compatibility is best-effort.
+Once the VMMI spec is declared stable, the backward compatibility will be guaranteed within the same major version:
+e.g all 1.y version will be backward compatible.
+
 #### Input/Output principles
 
 A VMMI compliant implementation:
@@ -85,6 +91,9 @@ The management application must send a specific signal (see "Signal handling") t
 The VMMI implementation must send a status message as soon as possible once the signal is received.
 The VMMI implementation must send *at most* one status message for each signal received.
 Both the VMMI implementation and the management application must treat the delivery of status messages as best effort.
+The management application must handle arbitrary long delays between the sending and the signal and the reception of
+the status message. In other words, the management application must handle gracefully the case on which all the
+status messages are received when the VMMI implementation exits.
 
 - may log other data to other channels (private log file, system log) using any other means, but it must not assume
 the client application reads those messages.
@@ -108,8 +117,8 @@ may be sent through the standard input
 
 In the simplest case, a VMMI implementation just sends the Completion message to the management app (see specification below).
 
-The implementation can also send status messages not yet specified. In any case, the implementation must signal the ordering
-using the "timestamp" field of the messages.
+The implementation can also send status messages not yet specified.
+In any case, the implementation must signal the ordering using the "timestamp" field of the messages.
 
 This applies
 - between status messages sent to stdout
@@ -126,7 +135,7 @@ The configuration data of each implementation must support at least the followin
 
 - "verbose" (int): sets the implementation verbosiness. A implementation sends output using stdout and stderr (see below).
   The following values are defined:
-  * 0: the implementation is completely silent except for fatal error messages
+  * 0: the implementation is completely silent except for the Completion message (see).
 
 Example configuration message
 ```
@@ -209,8 +218,8 @@ A VMMI compliant implementation:
 
 - must be implemented using an operating system process which starts when the migration begins, and exits when "termination"
 conditions are met (see "Termination" section).
-- must never exceed the lifetime of a migration, except for the necessary termination
-and cleanup duties.
+- must terminate as soon as possible after the migration completes. In other words, should not intentionally outlive the
+migration process.
 - is executed when the migration starts, but it must not perform any change to the system,
 including actually starting the migration using the libvirt APIs, until it got the configuration data (see Configuration)
 

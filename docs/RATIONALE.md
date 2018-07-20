@@ -5,7 +5,7 @@ To read the rationale of the VMMI specification details, see [the spec](https://
 
 ## Policies placement
 
-*VMMI puts the implementation of the policies in a third entity different from both the management application and the libvirt*
+*VMMI puts the implementation of the policies in a third part entity different from both the management application and the libvirt*
 
 Various management application implement their migration policies.
 Libvirt - the common infrastructure - should not implement policies. It should, like already does, offer tunables, knobs and protocols, letting the upper layers implementing their policies.
