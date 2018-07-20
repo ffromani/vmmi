@@ -127,8 +127,8 @@ func (h *Helper) Exit(code int, err ...error) {
 	sink := messages.Sink{W: h.errsink, L: h.Log()}
 	if code == ErrorCodeNone {
 		sink.ReportSuccess()
-		h.ExitFunc(0)
+		h.exitFunc(0)
 	}
 	sink.ReportError(code, Strerror(code), fmt.Sprintf("%s", err[0]))
-	h.ExitFunc(1)
+	h.exitFunc(1)
 }
